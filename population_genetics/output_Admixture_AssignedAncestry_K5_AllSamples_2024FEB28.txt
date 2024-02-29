@@ -1,0 +1,203 @@
+ID	Hap	KDist	Gens	Habitat	KCluster
+141_CC_UNK_RUS_M	W1	D13	NA	NA	K2
+008_CC_RED_FIN_M	W1	D5	P. phoenicurus	Forest	K2
+009_CC_RED_FIN_M	W1	D5	P. phoenicurus	Forest	K2
+010_CC_RED_FIN_F	W1	D5	P. phoenicurus	Forest	K2
+022_CC_RED_FIN_F	W1	D5	P. phoenicurus	Forest	K2
+023_CC_RED_FIN_F	W1	D5	P. phoenicurus	Forest	K2
+024_CC_RED_FIN_M	W1	D5	P. phoenicurus	Forest	K2
+043_CC_RED_FIN_F	W1	D5	P. phoenicurus	Forest	K2
+053_CC_RED_FIN_F	W1	D5	P. phoenicurus	Forest	K2
+085_CC_RED_FIN_M	W1	D5	P. phoenicurus	Forest	K2
+086_CC_RED_FIN_F	W1	D5	P. phoenicurus	Forest	K2
+092_CC_RED_FIN_M	W1	D5	P. phoenicurus	Forest	K2
+182_CB_GBC_CHN_M	W2	D3	S. ferreus	Edge	K1
+215_CB_GBC_CHN_F	W2	D3	S. ferreus	Edge	K1
+216_CB_GBC_CHN_F	W2	D3	S. ferreus	Edge	K1
+230_CB_ASC_CHN_M	W2	D3	S. maurus	Edge	K1
+004_CB_ATP_CHN_F	W2	D3	Su. alphonsiana	Savannas	K1
+006_CB_ATP_CHN_F	W2	D3	Su. alphonsiana	Savannas	K1
+007_CB_ATP_CHN_F	W2	D3	Su. alphonsiana	Savannas	K1
+264_CC_DRD_RUS_M	W2	D14	P. auroreus	Savannas	K3
+267_CC_DRD_RUS_M	W2	D14	P. auroreus	Savannas	K3
+143_CC_UNK_RUS_M	W2	D10	NA	NA	K3
+260_CC_SRT_RUS_F	W2	D7	C. calliope	Savannas	K3
+296_CC_UNK_RUS_M	W2	D7	NA	NA	K3
+259_CC_SRT_RUS_F	W2	D7	C. calliope	Savannas	K3
+389_CC_ACW_RUS_F	W2	D10	NA	NA	K3
+277_CC_UNK_RUS_F	W2	D10	NA	NA	K3
+276_CC_UNK_RUS_F	W2	D10	NA	NA	K3
+252_CC_SRT_RUS_F	W2	D13	C. calliope	Forest	K2
+255_CC_SRT_RUS_M	W2	D13	C. calliope	Forest	K2
+256_CC_SRT_RUS_F	W2	D13	C. calliope	Forest	K2
+183_CB_OMR_CHN_M	W3	D3	NA	Edge	K1
+185_CB_OMR_CHN_F	W3	D3	Co. saularis	Edge	K1
+217_CB_ASC_CHN_F	W3	D3	NA	Edge	K1
+005_CB_ORW_CHN_M	W3	D3	A. orientalis	Wetlands	K5
+104_CB_ORW_CHN_M	W3	D3	NA	Wetlands	K5
+105_CB_ORW_CHN_F	W3	D3	NA	Wetlands	K5
+108_CB_ORW_CHN_F	W3	D3	NA	Wetlands	K5
+164_CC_ORW_CHN_M	W3	D14	A. orientalis	Savannas	K5
+186_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+188_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+189_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+231_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+232_CC_ORW_CHN_M	W3	D14	A. orientalis	Savannas	K5
+193_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+195_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+202_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+206_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+208_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+196_CC_ORW_CHN_F	W3	D14	A. orientalis	Croplands	K5
+199_CC_ORW_CHN_F	W3	D14	A. orientalis	Croplands	K5
+200_CC_ORW_CHN_F	W3	D14	A. orientalis	Croplands	K5
+207_CC_ORW_CHN_F	W3	D14	A. orientalis	Croplands	K5
+194_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+169_CC_ORW_CHN_M	W3	D14	A. orientalis	Savannas	K5
+197_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+175_CC_ORW_CHN_M	W3	D14	A. orientalis	Croplands	K5
+244_CC_ORW_CHN_M	W3	D14	A. orientalis	Croplands	K5
+238_CC_ORW_CHN_F	W3	D14	A. orientalis	Croplands	K5
+242_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+240_CC_ORW_CHN_M	W3	D14	A. orientalis	Savannas	K5
+205_CC_ORW_CHN_F	W3	D14	A. orientalis	Savannas	K5
+162_CC_UNK_MON_M	W4	D11	NA	NA	K3
+159_CC_UNK_MON_M	W4	D11	NA	NA	K3
+160_CC_UNK_MON_M	W4	D11	NA	NA	K3
+301_CC_UNK_RUS_F	W4	D13	NA	NA	K2
+399_CC_UNK_RUS_M	W4	D1	NA	NA	K2
+065_CC_GRW_BGR_M	W4	D4	NA	Croplands	K2
+149_CC_GRW_BGR_M	W4	D4	A. arundinaceus	Croplands	K2
+042_CC_GRW_HUN_F	W4	D4	A. arundinaceus	Croplands	K2
+410_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+411_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+412_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+413_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+414_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+415_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+416_CC_GRW_HUN_F	W4	D4	NA	Croplands	K2
+152_CC_GRW_CZE_F	W4	D4	NA	Wetlands	K2
+392_CC_UNK_RUS_M	W4	D8	NA	NA	K2
+100_CC_ERW_POL_F	W4	D4	NA	Savannas	K2
+280_CC_UNK_RUS_F	W4	D1	NA	NA	K2
+123_CC_UNK_ENG_M	W4	D9	NA	NA	K4
+119_CC_UNK_ENG_F	W4	D9	NA	NA	K4
+115_CC_UNK_ENG_M	W4	D9	NA	NA	K4
+184_CC_IBS_CHN_F	W5	D13	L. isabellinus	Savannas	K2
+218_CC_IBS_CHN_M	W5	D13	L. isabellinus	Savannas	K2
+225_CC_IBS_CHN_F	W5	D13	NA	Savannas	K2
+397_CC_UNK_RUS_M	W5	D1	NA	NA	K2
+398_CC_UNK_RUS_M	W5	D1	NA	NA	K2
+396_CC_UNK_RUS_M	W5	D1	NA	NA	K2
+275_CC_UNK_RUS_M	W5	D1	NA	NA	K2
+057_CC_COR_BGR_F	W5	D4	NA	Croplands	K2
+067_CC_GRW_BGR_M	W5	D4	NA	Croplands	K2
+069_CC_GRW_BGR_F	W5	D4	A. arundinaceus	Croplands	K2
+071_CC_GRW_BGR_F	W5	D4	A. arundinaceus	Croplands	K2
+074_CC_MSH_BGR_F	W5	D4	A. palustris	Croplands	K2
+287_CC_UNK_RUS_M	W5	D1	NA	NA	K2
+016_CC_GRW_HUN_F	W5	D4	A. arundinaceus	Croplands	K2
+420_CC_GRW_HUN_F	W5	D4	NA	Croplands	K2
+426_CC_GRW_HUN_F	W5	D4	NA	Croplands	K2
+427_CC_GRW_HUN_F	W5	D4	NA	Croplands	K2
+429_CC_GRW_HUN_F	W5	D4	NA	Croplands	K2
+430_CC_GRW_HUN_F	W5	D4	NA	Croplands	K2
+153_CC_ERW_CZE_F	W5	D4	NA	Wetlands	K2
+375_CC_PLW_RUS_F	W6	D7	NA	NA	K3
+286_CC_UNK_RUS_F	W6	D14	NA	NA	K3
+282_CC_UNK_RUS_M	W6	D14	NA	NA	K3
+250_CC_MWB_RUS_M	W6	D14	E. cioides	Savannas	K3
+291_CC_UNK_RUS_F	W6	D7	NA	NA	K3
+292_CC_UNK_RUS_M	W6	D7	NA	NA	K3
+293_CC_UNK_RUS_M	W6	D7	NA	NA	K3
+294_CC_UNK_RUS_F	W6	D7	NA	NA	K3
+295_CC_UNK_RUS_F	W6	D7	NA	NA	K3
+261_CC_BFB_RUS_F	W6	D7	E. spodocephala	Savannas	K3
+289_CC_UNK_RUS_M	W6	D7	NA	NA	K3
+395_CC_UNK_RUS_M	W6	D10	NA	NA	K3
+262_CC_BFB_RUS_M	W6	D7	E. spodocephala	Savannas	K3
+142_CC_UNK_RUS_M	W6	D10	NA	NA	K3
+161_CC_UNK_MON_M	W6	D11	NA	NA	K3
+393_CC_UNK_RUS_F	W6	D11	NA	NA	K3
+300_CC_UNK_RUS_M	W6	D8	NA	NA	K2
+299_CC_UNK_RUS_F	W6	D8	NA	NA	K2
+298_CC_UNK_RUS_M	W6	D8	NA	NA	K2
+328_CC_SCC_RUS_F	W6	D8	NA	NA	K2
+279_CC_UNK_RUS_F	W6	D1	NA	NA	K2
+028_CC_BRA_FIN_F	W6	D5	F. montifringilla	Savannas	K2
+029_CC_BRA_FIN_F	W6	D5	F. montifringilla	Savannas	K2
+084_CC_BRA_FIN_M	W6	D5	F. montifringilla	Savannas	K2
+269_CC_TBW_RUS_F	W7	D14	Ar. aedon	Edge	K3
+272_CC_TBW_RUS_F	W7	D14	Ar. aedon	Edge	K3
+273_CC_TBW_RUS_F	W7	D14	Ar. aedon	Edge	K5
+270_CC_TBW_RUS_F	W7	D14	Ar. aedon	Savannas	K3
+283_CC_UNK_RUS_F	W7	D14	NA	NA	K3
+284_CC_UNK_RUS_M	W7	D14	NA	NA	K3
+285_CC_UNK_RUS_F	W7	D14	NA	NA	K3
+408_CC_TBW_RUS_F	W7	D14	NA	NA	K5
+290_CC_UNK_RUS_M	W7	D7	NA	NA	K3
+058_CC_COR_BGR_F	W7	D4	NA	Croplands	K2
+056_CC_COR_BGR_F	W7	D4	NA	Croplands	K2
+059_CC_COR_BGR_M	W7	D4	E. calandra	Croplands	K2
+061_CC_GRW_BGR_F	W7	D4	A. arundinaceus	Croplands	K2
+062_CC_GRW_BGR_F	W7	D4	A. arundinaceus	Croplands	K2
+063_CC_GRW_BGR_F	W7	D4	A. arundinaceus	Croplands	K2
+064_CC_GRW_BGR_M	W7	D4	A. arundinaceus	Croplands	K2
+066_CC_GRW_BGR_F	W7	D4	A. arundinaceus	Croplands	K2
+070_CC_GRW_BGR_F	W7	D4	A. arundinaceus	Croplands	K2
+078_CC_MSH_BGR_M	W7	D4	A. palustris	Croplands	K2
+145_CC_GRW_BGR_M	W7	D4	A. arundinaceus	Croplands	K2
+102_CC_ERW_SPA_F	W7	D6	A. scirpaceus	Croplands	K4
+013_CC_GRW_HUN_F	W7	D4	A. arundinaceus	Croplands	K2
+014_CC_GRW_HUN_F	W7	D4	A. arundinaceus	Croplands	K2
+017_CC_GRW_HUN_F	W7	D4	A. arundinaceus	Croplands	K2
+018_CC_GRW_HUN_M	W7	D4	A. arundinaceus	Croplands	K2
+096_CC_GRW_HUN_F	W7	D4	A. arundinaceus	Croplands	K2
+417_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+418_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+419_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+422_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+423_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+424_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+428_CC_GRW_HUN_F	W7	D4	NA	Croplands	K2
+304_CC_UNK_RUS_F	W7	D1	NA	Forest	K2
+150_CC_GRW_CZE_F	W7	D4	NA	Wetlands	K2
+151_CC_GRW_CZE_F	W7	D4	NA	Wetlands	K2
+157_CC_GRW_CZE_M	W7	D4	NA	Wetlands	K2
+082_CC_ERW_CZE_F	W7	D4	NA	Forest	K2
+138_CC_UNK_BLR_M	W7	D2	NA	NA	K2
+297_CC_UNK_RUS_M	W7	D8	NA	NA	K2
+083_CC_ERW_DEU_M	W7	D4	NA	Savannas	K2
+281_CC_UNK_RUS_M	W7	D1	NA	NA	K2
+140_CC_UNK_BLR_M	W7	D2	NA	NA	K2
+098_CC_ERW_POL_M	W7	D4	A. scirpaceus	Savannas	K2
+274_CC_UNK_BLR_M	W7	D2	NA	NA	K2
+278_CC_UNK_RUS_F	W7	D1	NA	NA	K2
+124_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+303_CC_UNK_RUS_M	W7	D2	NA	Forest	K2
+113_CC_UNK_ENG_F	W7	D9	NA	NA	K4
+116_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+121_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+114_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+126_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+127_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+136_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+118_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+125_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+037_CC_ERW_DNK_M	W7	D12	A. scirpaceus	Savannas	K4
+038_CC_ERW_DNK_F	W7	D12	A. scirpaceus	Croplands	K4
+039_CC_ERW_DNK_F	W7	D12	A. scirpaceus	Croplands	K4
+120_CC_UNK_ENG_F	W7	D9	NA	NA	K4
+130_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+134_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+135_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+131_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+132_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+133_CC_UNK_ENG_M	W7	D9	NA	NA	K4
+034_CC_MPT_NOR_F	W7	D12	An. Pratensis	Savannas	K2
+035_CC_MPT_NOR_F	W7	D12	An. Pratensis	Savannas	K4
+036_CC_MPT_NOR_F	W7	D12	An. Pratensis	Savannas	K4
+030_CC_MPT_NOR_F	W7	D12	An. Pratensis	Shrublands	K4
+032_CC_MPT_NOR_M	W7	D12	An. Pratensis	Shrublands	K4
+033_CC_MPT_NOR_M	W7	D12	An. Pratensis	Shrublands	K2
+031_CC_MPT_SWE_F	W7	D5	An. Pratensis	Savannas	K2
