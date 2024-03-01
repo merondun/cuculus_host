@@ -5,7 +5,6 @@
 #SBATCH --clusters=biohpc_gen
 #SBATCH --partition=biohpc_gen_normal
 #SBATCH --cpus-per-task=20
-#SBATCH --mem-per-cpu=4763mb
 #SBATCH --time=24:00:00
 
 #mamba activate snps
@@ -47,10 +46,20 @@ high=$(echo "$mean + 2*$sd" | bc)
 
 rm ${CHR}_${SAMP}_dp_stats.txt
 
-#filter 
+#filter, include singletons 
+bcftools view vcfs/${CHR}_${SAMP}.SNP.DP3.vcf.gz --min-alleles 2 --max-alleles 2 --min-ac 1 --max-af 0.999 --types snps -i "MQ>40 & INFO/DP > ${low} & INFO/DP < ${high} & F_MISSING < 0.1" -Oz -o vcfs/${CHR}_${SAMP}.SNP.DP3-AC1-MQ40.vcf.gz
+bcftools index --threads 10 vcfs/${CHR}_${SAMP}.SNP.DP3-AC1-MQ40.vcf.gz 
+
+#create tree  
+python ~/modules/vcf2phylip.py -i vcfs/${CHR}_${SAMP}.SNP.DP3-AC1-MQ40.vcf.gz -f --output-folder ml_trees
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}_${SAMP}.SNP.DP3-AC1-MQ40.min4.phy --seqtype DNA -m "MFP+ASC" -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}_${SAMP}.SNP.DP3-AC1-MQ40.min4.phy.varsites.phy --seqtype DNA -m "MFP+ASC" -alrt 1000 -B 1000
+
+#filter with NO SINGLETONS 
 bcftools view vcfs/${CHR}_${SAMP}.SNP.DP3.vcf.gz --min-alleles 2 --max-alleles 2 --min-ac 2 --max-af 0.999 --types snps -i "MQ>40 & INFO/DP > ${low} & INFO/DP < ${high} & F_MISSING < 0.1" -Oz -o vcfs/${CHR}_${SAMP}.SNP.DP3-AC2-MQ40.vcf.gz
 bcftools index --threads 10 vcfs/${CHR}_${SAMP}.SNP.DP3-AC2-MQ40.vcf.gz 
 
-#create tree  
+#create tree NO SINGLETONS   
 python ~/modules/vcf2phylip.py -i vcfs/${CHR}_${SAMP}.SNP.DP3-AC2-MQ40.vcf.gz -f --output-folder ml_trees
-iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}_${SAMP}.SNP.DP3-AC2-MQ40.min4.phy --seqtype DNA -m MFP+ASC -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}_${SAMP}.SNP.DP3-AC2-MQ40.min4.phy --seqtype DNA -m "MFP+ASC" -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}_${SAMP}.SNP.DP3-AC2-MQ40.min4.phy.varsites.phy --seqtype DNA -m "MFP+ASC" -alrt 1000 -B 1000

@@ -64,7 +64,8 @@ bcftools index --threads 10 vcfs/${CHR}.SNP.DP3-AC1-MQ40.vcf.gz
 
 #create tree  
 python ~/modules/vcf2phylip.py -i vcfs/${CHR}.SNP.DP3-AC1-MQ40.vcf.gz -f --output-folder ml_trees
-iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}.SNP.DP3-AC1-MQ40.min4.phy --seqtype DNA -m MFP+ASC -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}.SNP.DP3-AC1-MQ40.min4.phy --seqtype DNA -m "GTR+ASC" -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}.SNP.DP3-AC1-MQ40.min4.phy.varsites.phy --seqtype DNA -m "GTR+ASC" -alrt 1000 -B 1000
 
 #filter with NO SINGLETONS 
 bcftools view vcfs/${CHR}.SNP.DP3.vcf.gz --min-alleles 2 --max-alleles 2 --min-ac 2 --max-af 0.999 --types snps -i "MQ>40 & INFO/DP > ${low} & INFO/DP < ${high} & F_MISSING < 0.1" -Oz -o vcfs/${CHR}.SNP.DP3-AC2-MQ40.vcf.gz
@@ -72,4 +73,5 @@ bcftools index --threads 10 vcfs/${CHR}.SNP.DP3-AC2-MQ40.vcf.gz
 
 #create tree  
 python ~/modules/vcf2phylip.py -i vcfs/${CHR}.SNP.DP3-AC2-MQ40.vcf.gz -f --output-folder ml_trees
-iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}.SNP.DP3-AC2-MQ40.min4.phy --seqtype DNA -m MFP+ASC -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}.SNP.DP3-AC2-MQ40.min4.phy --seqtype DNA -m "GTR+ASC" -alrt 1000 -B 1000
+iqtree --redo -keep-ident -T 20 -s ml_trees/${CHR}.SNP.DP3-AC1-MQ40.min4.phy.varsites.phy --seqtype DNA -m "GTR+ASC" -alrt 1000 -B 1000
