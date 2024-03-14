@@ -8,13 +8,15 @@ The repository is organized as follows:
 
 - **wgs_preprocessing**: Preparing fastq reads, alignment, initial SNP filtering, identifying relatives. 
 
-- **snp_calling**: Calling SNPs from alignments, subsampling individuals. 
+- **phylogenetics**: Calling SNPs from alignments, subsampling individuals. 
 
-- **relatedness**: Identify related individuals. 
+- **population_genetics**: Run ADMIXTURE and evalAdmix, plot tesselation and PCA. 
 
-- **msmc**: Run MSMC crosscoalescent and MSMC-IM, using raw gVCFs with basic filtering for invariant sites. 
+- **gens_associations**: Associations between egg or host or habitat and explanatory variables: haplogroup, ancestry, geography. 
 
-- **admixture**: Run ADMIXTURE and evalAdmix for plotting genetic tesselations across space. 
+- **correlations_geography_genetics**: Associations between FST/PHIst and geographic distance. 
+
+- **gene_hunt**: Examining the genetic basis of egg mimicry using pairwise FST analyses.
 
 ## Contact
 
