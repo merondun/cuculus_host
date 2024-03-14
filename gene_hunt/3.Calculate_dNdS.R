@@ -25,4 +25,4 @@ if (chr == 'chr_MT') {
 
 }
 
-write.table(dat %>% unique %>% arrange(seqnames,start),file=paste0('dnds/Annotated_Variants_',chr,'__2024MAR01.txt'),quote=F,sep='\t',row.names=F)
+write.table(dat %>% unique %>% arrange(seqnames,start),file=paste0('dnds/Annotated_Variants_',chr,'__2024MAR07.txt'),quote=F,sep='\t',row.names=F)
