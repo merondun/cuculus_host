@@ -6,6 +6,9 @@ library(viridis)
 library(geosphere)
 library(broom)
 library(ggpubr)
+library(lme4)
+library(lmerTest)
+library(broom.mixed)
 library(meRo)
 library(RColorBrewer)
 
@@ -81,6 +84,27 @@ cors = dfs %>% group_by(AvZ) %>%
 
 cols = brewer.pal(4,'Dark2')
 dfs$AvZ = factor(dfs$AvZ,levels=c('Autosome','Z','W','mtDNA'))
+
+#lmm, account for P1 and P2 
+model_summaries <- dfs %>%
+  group_by(AvZ) %>%
+  do({
+    model <- lmer(log(pmax(mean, 0.005)) ~ log(pmax(Distance_km, 0.005)) + (1|P1) + (1|P2), data = .)
+    summary_df <- broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE)
+  }) %>%
+  dplyr::bind_rows()
+#output fixed effect of distance, bonferroni correction 
+model_summaries %>% filter(grepl('Distance',term)) %>% select(-effect,-term) %>% ungroup %>% 
+  mutate(padj = p.adjust(p.value,method='bonferroni'),
+         signif = ifelse(padj < 0.05,'*','n.s.'))
+# A tibble: 4 × 10
+# AvZ      estimate std.error statistic    df  p.value conf.low conf.high     padj signif
+# <fct>       <dbl>     <dbl>     <dbl> <dbl>    <dbl>    <dbl>     <dbl>    <dbl> <chr> 
+#   1 Autosome    1.22     0.0614     19.9   30.3 6.01e-19   1.10       1.35  2.41e-18 *     
+#   2 Z           1.09     0.0747     14.6   34.1 3.07e-16   0.941      1.24  1.23e-15 *     
+#   3 W           0.614    0.331       1.86  41.4 7.05e- 2  -0.0538     1.28  2.82e- 1 n.s.  
+# 4 mtDNA       0.499    0.183       2.73  42.3 9.30e- 3   0.130      0.868 3.72e- 2 *   
+  
 
 # Create the plot
 pp1 = ggplot(dfs, aes(x = log(pmax(Distance_km,0.005)), y = log(pmax(mean,0.005)), color = AvZ,shape=AvZ)) +

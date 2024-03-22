@@ -1,4 +1,4 @@
-#Host & Environment associations, MNLR, Model Selection
+#Egg, Host, Habitat associations, MNLR, Model Selection
 #### Find associations between MT/W haplotypes and features 
 setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host')
 .libPaths('~/mambaforge/envs/rfs/lib/R/library')
@@ -18,15 +18,17 @@ library(meRo) #devtools::install_github('merondun/meRo',force=TRUE,upgrade='neve
 library(caret)
 
 set.seed(123)
-# # This initial section assigns ancestry 'K' values for related individuals according to their relatives, since they weren't included in the popgen analysis.
-# md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
-# 
-# #only grab samples with known egg
-# md = md %>% drop_na(Egg) %>%
-#   select(ID = ID, Host = HostParentShort, Egg, Environment = Habitat, Haplogroup = Hap, Ancestry = AncestryK5, Geography = KDist)
-# unknowns = md %>% filter(is.na(Ancestry))
-# 
+# This initial section assigns ancestry 'K' values for related individuals according to their relatives, since they weren't included in the popgen analysis.
+md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
+
+#only grab samples with known egg (hash out filter for related individuals)
+md = md %>%
+  filter(Analysis_PopulationGenetics == 1) %>%
+  drop_na(Egg) %>%
+  select(ID = ID, Host = HostParentShort, Egg, Habitat, Haplogroup = Hap, Ancestry = AncestryK5, Geography = KDist)
+
 # #add similar K for relatives which weren't included in pop gen analyses
+# unknowns = md %>% filter(is.na(Ancestry))
 # rels = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/relatedness/chr_10.CC.rel')
 # rels = rels %>% select(IDA = INDV1, IDB = INDV2, phi = RELATEDNESS_PHI)
 # relk = left_join(rels,md %>% select(IDA=ID,KA=Ancestry)) %>% left_join(.,md %>% select(IDB=ID,KB=Ancestry)) %>% filter(IDA != IDB)
@@ -37,290 +39,235 @@ set.seed(123)
 #   cat('Sample : ',unk,' is ancestry: ',targ$K,'\n')
 # }
 # md_egg = left_join(md,assigned) %>% mutate(Ancestry = ifelse(is.na(Ancestry),K,Ancestry)) %>% select(-K)
-# write.table(md_egg,file='/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/MNLR_Input_Egg_RelatedK_2024MAR05.txt',quote=F,sep='\t',row.names=F)
+# write.table(md_egg,file='/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/MNLR_Input_Egg_RelatedK_2024MAR16.txt',quote=F,sep='\t',row.names=F)
 
-md_egg = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/MNLR_Input_Egg_RelatedK_2024MAR05.txt')
+#md_egg = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/MNLR_Input_Egg_RelatedK_2024MAR16.txt')
+md_egg = md 
 
 ##### Initialize, summary stats on raw data #####
 #ensure they are all factor variables
-md_egg = md_egg %>% mutate_at(c('Host','Egg','Environment','Haplogroup','Ancestry','Geography'),as.factor)
-
-# Define the variables and covariates
-variables <- c("Egg", "Host", "Environment")
-covariates <- c("Haplogroup", "Ancestry", "Geography")
-
-# Create combinations of variables and covariates
-combinations <- expand.grid(Variable = variables, Covariate = covariates, stringsAsFactors = FALSE)
-
-# Function to perform Chi-square test and return a data frame
-perform_chi_square <- function(var, cov) {
-  # Filter the data for relevant observations
-  filtered_md <- md_egg %>%
-    select(!!sym(var), !!sym(cov)) %>%
-    na.omit()  # Remove NA values which chisq.test cannot handle
-  
-  # Perform Chi-square test
-  test_result <- chisq.test(table(filtered_md[[1]], filtered_md[[2]]))
-  
-  # Return a data frame with the results
-  tibble(
-    Variable = var,
-    Covariate = cov,
-    ChiSq = test_result$statistic,
-    p = test_result$p.value
-  )
-}
-
-# Apply the function to each combination and bind the results into a single data frame
-results_chi = map2_df(combinations$Variable, combinations$Covariate, perform_chi_square)
-results_chi
-results_chi %>% ggplot(aes(x=Variable,col=Covariate,y=ChiSq))+
-  geom_point()+
-  theme_bw()
+md_egg = md_egg %>% mutate_at(c('Host','Egg','Habitat','Haplogroup','Ancestry','Geography'),as.factor)
 
 #only retain Host where we have at least 2 cuckoos 
-md_egg = md_egg %>% group_by(Host) %>% mutate(TotalHost = n()) %>% ungroup %>% group_by(Environment) %>% mutate(TotalEnvironment = n()) %>% ungroup %>% group_by(Egg) %>% mutate(TotalEgg = n())  %>% ungroup
+md_egg = md_egg %>% group_by(Host) %>% mutate(TotalHost = n()) %>% ungroup %>% group_by(Habitat) %>% mutate(TotalHabitat = n()) %>% ungroup %>% group_by(Egg) %>% mutate(TotalEgg = n())  %>% ungroup
 minobs=2
-md = md_egg %>% filter(TotalHost >= minobs & TotalEnvironment >= minobs & TotalEgg >= minobs) 
+md = md_egg %>% filter(TotalHost >= minobs & TotalHabitat >= minobs & TotalEgg >= minobs) 
 md_egg %>% filter(!ID %in% md$ID)
-write.table(md$ID,file='randomforest/Samples_Retained_Related_MNLR_2024MAR05.txt',quote=F,sep='\t',row.names=F,col.names=F)
+#write.table(md$ID,file='randomforest/Samples_Retained_Unrelated_MNLR_2024MAR14.txt',quote=F,sep='\t',row.names=F,col.names=F)
 
-##### Model Selection ##### 
-#assess covariate importance with model selection, using MNLR 
-vars = c('Environment','Host','Egg')
-sampling = c('Median','Minimum')
+#### Count proportions first, count proportions for host and habitat and egg  
+hp = md %>% group_by(Host) %>% mutate(Total = n()) %>% 
+  pivot_longer(c(Ancestry,Geography,Haplogroup)) %>% ungroup %>% 
+  group_by(Host,name,value) %>% 
+  summarize(Parts = n(),
+            Proportion = Parts / Total,
+            Percent = paste0(round( Parts / Total,3)*100,'% (',Total,')')) %>% unique
+tp = md %>% group_by(Habitat) %>% mutate(Total = n()) %>% 
+  pivot_longer(c(Ancestry,Geography,Haplogroup)) %>% ungroup %>% 
+  group_by(Habitat,name,value) %>% 
+  summarize(Parts = n(),
+            Proportion = Parts / Total,
+            Percent = paste0(round( Parts / Total,3)*100,'% (',Total,')')) %>% unique
+ep = md %>% group_by(Egg) %>% mutate(Total = n()) %>% 
+  pivot_longer(c(Ancestry,Geography,Haplogroup)) %>% ungroup %>% 
+  group_by(Egg,name,value) %>% 
+  summarize(Parts = n(),
+            Proportion = Parts / Total,
+            Percent = paste0(round( Parts / Total,3)*100,'% (',Total,')')) %>% unique
+egglev = ep %>% ungroup %>% select(Egg) %>% unique %>% mutate(ord = as.numeric(gsub('E','',Egg))) %>% arrange(ord)
+ep$Egg = factor(ep$Egg,levels=egglev$Egg)
 
-#set up cross validation 
+#bind them together 
+ap = rbind(hp %>% ungroup %>% mutate(Response = Host, variable = 'Host') %>% select(-Host), 
+           tp %>% ungroup %>% mutate(Response = Habitat, variable = 'Habitat') %>% select(-Habitat),
+           ep %>% ungroup %>% mutate(Response = Egg, variable = 'Egg') %>% select(-Egg))
+
+#just for ordering the covariates nicely 
+ord = ap %>% ungroup %>% select(name,value) %>% unique %>% mutate(ord = as.numeric(str_sub(value,2))) %>% group_by(name) %>% arrange(ord)
+ap$value = factor(ap$value,levels=ord$value)
+
+#plot 
+app = ap %>% 
+  ggplot(aes(y=Response,x=value,fill=Proportion,label=Parts))+
+  facet_grid(variable~name,scales='free',space='free')+
+  scale_fill_gradient('Proportion Observed',low='yellow',high='red')+
+  geom_tile()+
+  geom_text(size=1)+
+  ylab('')+xlab('')+
+  theme_bw(base_size=6)+
+  theme(legend.position = 'top')
+app
+
+#pdf('figures/Proportions_HostHabitat_2024MAR14.pdf',height=6.5,width=6)
+app
+#dev.off()
+
+##### Model Selection #####
+#assess covariate importance with model selection, using MNLR
+vars = c('Habitat','Host','Egg')
+
+#set up cross validation
 ctrl = trainControl(method = "cv",   #Use cross-validation
                     number = 5,      #number of folds
-                    summaryFunction = multiClassSummary,  #caret now attempts to stratify levels 
+                    summaryFunction = multiClassSummary,  #caret now attempts to stratify levels
                     classProbs = TRUE, #For classification models, to save class probabilities
                     savePredictions = TRUE) #save predictions for each fold
 
-#change 'A. pal' to A_pal' 
-md_cv = md %>% mutate(Host = gsub('\\. ','_',Host),
-                      Egg = gsub('\\. ','_',Egg))
+#change 'A. pal' to A_pal'
+md_cv = md %>% mutate(Host = gsub('\\. ','_',Host))
 
 #For determining which predictors improve model:
-adat = NULL; conf_dat = NULL; counter = 0
-for (minnum in c(2,5)) { 
-  #Filter at the very base level, ensuring that across egg / host / habitat we have the same individuals with representative sampling 
-  md_subbed = md_cv %>% filter(TotalHost > minnum & TotalEnvironment >= minnum & TotalEgg >= minnum) 
-  for (rep in seq(1,100,1)){ 
-    for (type in sampling) {
-      for (var in vars) { counter = counter + 1;
+adat = NULL; conf_dat = NULL; class_dat = NULL; new_preds = NULL; counter = 0
+for (minnum in c(2)) {  #cycle through 2, 3, or 4 minimum observations per category
+  
+  #Filter at the very base level, ensuring that across egg / host / habitat we have the same individuals with representative sampling
+  md_subbed = md_cv %>% filter(TotalHost >= minnum & TotalHabitat >= minnum & TotalEgg >= minnum) %>%
+    mutate_at(c('Host','Egg','Habitat','Haplogroup','Ancestry','Geography'),as.factor)
+  for (rep in seq(1,100,1)){  #create 100 replicates
+    for (var in vars) { counter = counter + 1;
+    
+    #ensure that we have adequate levels, only a sanity since it is already filtered
+    retained = md_subbed %>% ungroup %>% count(!!sym(var)) %>% filter(n >= minnum) %>% pull(var)
+    length(retained)
+    #number of samples to subsample
+    subsamp = md_subbed %>% ungroup %>% count(!!sym(var)) %>% filter(n >= minnum) %>% summarize(min = min(n)) %>% pull(min)
+    
+    cat('Downsampling to n = ',subsamp,', requiring min = ',minnum,' for variable: ',var,', ','replicate: ',rep,'\n')
+    #subsampling
+    mdi = md_subbed %>%
+      filter(!!sym(var) %in% retained) %>%
+      group_by(!!sym(var)) %>%
+      sample_n(min(n(), subsamp),replace = TRUE) %>%
+      ungroup()
+    mdi %>% count(!!sym(var))
+    
+    #ensure the factor levels are dropped which aren't in the dataset after filtering
+    mdi = droplevels(mdi)
+    
+    #First MNLR on combinations
+    formula_1 = as.formula(paste(var, "~ Haplogroup + Ancestry + Geography"))
+    m1 = train(formula_1, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    formula_2 = as.formula(paste(var, "~ Haplogroup + Geography"))
+    m2 = train(formula_2, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    formula_3 = as.formula(paste(var, "~ Haplogroup "))
+    m3 = train(formula_3, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    formula_4 = as.formula(paste(var, "~ Haplogroup + Ancestry"))
+    m4 = train(formula_4, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    formula_5 = as.formula(paste(var, "~ Ancestry"))
+    m5 = train(formula_5, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    formula_6 = as.formula(paste(var, "~ Ancestry + Geography"))
+    m6 = train(formula_6, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    formula_7 = as.formula(paste(var, "~ Geography"))
+    m7 = train(formula_7, data = mdi, method = "multinom", trControl = ctrl, metric = "AUC", trace = FALSE)
+    
+    models = c('m1','m2','m3','m4','m5','m6','m7')
+    for (model in models) {
+      #output model fit from confusion matrix
+      mo = get(model)
       
-      retained = md_subbed %>% ungroup %>% count(!!sym(var)) %>% filter(n >= minnum) %>% pull(var)
+      #get AIC
+      final_model = mo$finalModel;
+      AIC = AIC(final_model)
       
-      if (type == 'Median') {
-        subsamp = md_subbed %>% ungroup %>% count(!!sym(var)) %>% filter(n >= minnum) %>% summarize(median = median(n)) %>% pull(median)
-      } else {
-        subsamp = md_subbed %>% ungroup %>% count(!!sym(var)) %>% filter(n >= minnum) %>% summarize(min = min(n)) %>% pull(min)
-      }
+      #save the model results
+      dat = data.frame(Model = model, Iteration = rep, Variable = var, Subsampled = subsamp, MinObs = minnum,
+                       decay = mo$results$decay, logLoss = mo$results$logLoss, logLossSD = mo$results$logLossSD, AIC = AIC, AUC = mo$results$AUC, Accuracy = mo$results$Accuracy, AccuracySD = mo$results$AccuracySD, Kappa = mo$results$Kappa)
+      dat_best = dat %>% slice_min(logLoss)
+      adat = rbind(adat,dat_best)
       
-      cat('Downsampling to n = ',subsamp,' for variable: ',var,', and sampling with: ',type,' ','replicate: ',rep,'\n')
-      #subsampling 
-      mdi = md_subbed %>%
-        filter(!!sym(var) %in% retained) %>% 
-        group_by(!!sym(var)) %>%
-        sample_n(min(n(), subsamp),replace = TRUE) %>%
-        ungroup()
-      mdi %>% count(!!sym(var))
+      #also save training confusion matrix
+      pred = mo$pred
+      pred_best = pred %>% filter(decay == dat_best$decay)
       
-      #ensure the factor levels are dropped which aren't in the dataset after filtering
-      mdi = droplevels(mdi)
+      #and predict against real data
+      predicted_classes = predict(mo, newdata = mdi, type = "raw")
+      new = mdi %>% select(reference = !!sym(var)) %>% mutate(predicted = predicted_classes)
       
-      #First MNLR on combinations 
-      formula_1 = as.formula(paste(var, "~ Haplogroup + Ancestry + Geography"))
-      m1 = train(formula_1, data = mdi, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
+      conf_new = confusionMatrix(new$predicted, new$reference)
+      conf_real = as.data.frame(conf_new$table) %>% mutate(
+        Prediction = gsub('_','\\. ',Prediction),
+        Reference = gsub('_','\\. ',Reference)) %>%
+        mutate(Model = model, Iteration = counter, Variable = var, Subsample = subsamp, MinObs = minnum, AUC=dat_best$AUC,logloss=dat_best$logLoss,Accuracy = dat_best$Accuracy,AccuracySD=dat_best$AccuracySD)
+      new_preds = rbind(new_preds,conf_real)
+      rm(conf_real,dat,dat_best)
       
-      formula_2 = as.formula(paste(var, "~ Haplogroup + Geography"))
-      m2 = train(formula_2, data = md_cv, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
-      
-      formula_3 = as.formula(paste(var, "~ Haplogroup "))
-      m3 = train(formula_3, data = md_cv, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
-      
-      formula_4 = as.formula(paste(var, "~ Haplogroup + Ancestry"))
-      m4 = train(formula_4, data = md_cv, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
-      
-      formula_5 = as.formula(paste(var, "~ Ancestry"))
-      m5 = train(formula_5, data = md_cv, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
-      
-      formula_6 = as.formula(paste(var, "~ Ancestry + Geography"))
-      m6 = train(formula_6, data = md_cv, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
-      
-      formula_7 = as.formula(paste(var, "~ Geography"))
-      m7 = train(formula_7, data = md_cv, method = "multinom", trControl = ctrl, metric = "Accuracy", trace = FALSE)
-      
-      models = c('m1','m2','m3','m4','m5','m6','m7')
-      for (model in models) {
-        #output model fit from confusion matrix
-        mo = get(model)
-        pred = mo$pred
-        
-        #confusion Matrix for the predictions across all folds
-        conf_matrix = confusionMatrix(pred$pred, pred$obs)
-        conf = as.data.frame(conf_matrix$table) %>% mutate(
-          Prediction = gsub('_','\\. ',Prediction),
-          Reference = gsub('_','\\. ',Reference))
-        
-        print(mo)
-        
-        #save the model results 
-        dat = data.frame(Model = model, Iteration = rep, Variable = var, Type = type, Subsampled = subsamp, MinObs = minnum,
-                         decay = mo$results$decay, logLoss = mo$results$logLoss, logLossSD = mo$results$logLossSD, AUC = mo$results$AUC, Accuracy = mo$results$Accuracy, AccuracySD = mo$results$AccuracySD, Kappa = mo$results$Kappa)
-        adat = rbind(adat,dat)
-        
-        #also save confusion matrix
-        conf_dat = rbind(conf_dat,conf %>% mutate(Model = model, Iteration = counter, Variable = var, Subsample = subsamp, MinObs = minnum, Type = type))
-        
-      }
-      }
-    }
-  }
-}
+     } #exit model loop
+    } #exit response variable loop
+  } #exit iteration loop
+} #exit minimum samples loop
 
-write.table(adat,'/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_AUC_WithReplace-3ResponseRel_Output_2024MAR05.txt',quote=F,sep='\t',row.names=F)
-write.table(conf_dat,'/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_AUC_WithReplace-3ResponseRel_Confusion_Matrix_2024MAR05.txt',quote=F,sep='\t',row.names=F)
+write.table(adat,'/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_Unrelated-SIMPLE_2024MAR17.txt',quote=F,sep='\t',row.names=F)
+write.table(new_preds,'/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/ConfusionMatrix-Overall_Unrelated-SIMPLE_2024MAR17.txt',quote=F,sep='\t',row.names=F)
 
-adat = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_AUC_WithReplace-3ResponseRel_Output_2024MAR05.txt')
-conf_dat = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_AUC_WithReplace-3ResponseRel_Confusion_Matrix_2024MAR05.txt')
-
-#re-name egg levels
-eggs = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/Egg_Lookup.txt')
-
-nonegg = conf_dat %>% filter(Variable != 'Egg')
-egg = conf_dat %>% filter(Variable == 'Egg')
-egg_rename = left_join(egg,eggs %>% dplyr::rename(Prediction=Egg)) %>% 
-	select(-Prediction) %>% dplyr::rename(Prediction = Eggtype) %>% 
-	left_join(.,eggs %>% dplyr::rename(Reference=Egg)) %>% 
-	select(-Reference) %>% dplyr::rename(Reference = Eggtype)
-
-conf_dat = rbind(nonegg,egg_rename)
-write.table(conf_dat,file='/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_AUC_WithReplace-3ResponseRel_Confusion_Matrix_2024MAR05.txt',quote=F,sep='\t',row.names=F)
+adat = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/Model_Selection_Unrelated-SIMPLE_2024MAR17.txt')
+conf_mats = read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/randomforest/ConfusionMatrix-Overall_Unrelated_2024MAR17.txt')
 
 #plot results 
 leg = data.frame(Model = c('m1','m2','m3','m4','m5','m6','m7'),
-                 Label = c('W+K+D','W+D','W','W+K','K','K+D','D'))
-model_dat = adat %>% 
-  left_join(.,leg) %>% 
-  mutate(Facet = paste0(Type,'\nn = ',MinObs)) 
+                 Label = c('W+K+B','W+B','W','W+K','K','K+B','B'))
+model_dat = adat %>% left_join(.,leg)
 
-#prep for plots, showing sensitivity of AUC
-auc_summary = model_dat %>% 
-  group_by(Variable,Facet,Label,Iteration) %>% 
-  slice_min(logLoss,n=1) %>% ungroup %>% 
-  group_by(Variable,Facet,Label) %>% 
-  sum_stats(AUC)  %>%
-  mutate(lab = paste0(round(conf_low,2),' - ',round(conf_high,2)))
-model_dat$Label = factor(model_dat$Label, levels=c('W+K+D','W+D','W+K','K+D','D','W','K'))
+#Plot AUC for each model across all the iterations
+model_dat$Label = factor(model_dat$Label, levels=c('W+K+B','W+B','W+K','K+B','B','W','K'))
 app = model_dat %>% ggplot(aes(y=Label,x=AUC,fill=Variable))+
   geom_boxplot()+
-  #geom_text(data=auc_summary,aes(y=Label,x=0.55,label=lab),
-  #          position=position_dodge(width=1),size=3,col='black')+
   scale_fill_manual(values=brewer.pal(3,'RdBu'))+
-  xlim(c(0.5,1))+xlab('Accuracy')+ylab('Model Covariates')+
-  facet_grid(Facet~Variable,scales='free',space='free')+
-  theme_bw()+theme(legend.position = 'none',strip.text.y.right = element_text(angle = 0))
+  xlab('AUC')+ylab('Model Covariates')+
+  theme_bw(base_size=6)+theme(legend.position = 'top',strip.text.y.right = element_text(angle = 0))
 app 
 
-pdf('figures/MNLR_ModelSelection_AUC_WithReplace-3Response_2024MAR12.pdf',height=7,width=5)
+pdf('figures/MNLR_ModelSelection_Accuracy-Sensitivity_Unrelated-2024MAR17.pdf',height=4,width=6)
 app
 dev.off()
 
-#final plot, overall across all models
-auc_overall = model_dat %>% 
-  group_by(Variable,Facet,Label,Iteration) %>% 
-  filter(MinObs == 2 & Type == 'Median') %>% 
-  slice_min(logLoss,n=1) %>% ungroup %>% 
-  group_by(Variable,Label) %>% 
-  sum_stats(AUC)  %>%
-  mutate(lab = paste0(sprintf('%.2f',mean),' +/- ',sprintf('%.2f',sd)))
-modp = model_dat %>%
-  group_by(Variable,Facet,Label,Iteration) %>% 
-  filter(MinObs == 2 & Type == 'Median') %>% 
-  slice_min(logLoss,n=1) %>% ungroup %>% 
-  ggplot(aes(y=Label,x=AUC,fill=Variable))+
-  ggdist::stat_halfeye(point_interval=NULL,alpha = 0.8,justification = -0.1,normalize='groups')+
-  geom_point(data=auc_overall, aes(x=median,fill=Variable,y=Label),pch=21,stroke=0.35,size=1)+
-  scale_fill_manual(values=rev(viridis(3,option='cividis')))+
-  theme_bw(base_size=7)+
-  coord_cartesian(xlim=c(0.75,1))+
+#plot boxes, AUC
+auc_plot = model_dat %>%
+  group_by(Variable,MinObs,Label,Iteration) %>% 
+  ungroup %>% 
+  ggplot(aes(x=Variable,fill=Label,y=AUC))+
+  geom_boxplot(width=0.75,outlier.size = 0.5)+
+  scale_fill_manual(values=c(brewer.pal(4,'Greys'),brewer.pal(3,'Set2')[c(2,3,1)]))+
+  theme_bw(base_size=6)+
   theme(legend.position='top')
-modp
+auc_plot
 
-#adjust = .25,width = .5,.width = 0,trim=TRUE,justification = 0, point_colour = NA,
-#just summary, small size 
-modp = auc_overall %>% 
-  ggplot(aes(y=Label,x=mean,xmin=mean-sd,xmax=pmin(mean+sd,1),col=Variable))+
-  geom_point(position=position_dodge(width=0.5))+
-  geom_errorbar(position=position_dodge(width=0.5),width=0.25)+https://ood-2.ai.lrz.de/rnode/cpu-011.ai.lrz.de/8984/graphics/39b3f2b0-1a75-4ed2-9ee1-aa7db9b6fc78.png
-  xlab('ROC AUC (Mean +/- SD')+ylab('')+
-  scale_fill_manual(values=brewer.pal(3,'Set2'))+
-  #facet_grid(.~Variable,scales='free')+
-  theme_bw(base_size=7)+
-  xlim(c(0.5,1.0))+
-  theme(legend.position='top')
-modp
-
-pdf('figures/MNLR_ModelSelection_AUC-Overall_WithReplacement-3Response_2024MAR12.pdf',height=2,width=2.75)
-modp
+pdf('figures/MNLR_ModelSelection_Accuracy-Overall_Unrelated_2024MAR17.pdf',height=2,width=3.5)
+auc_plot
 dev.off()
 
-#plot confusion matrix
-conf_plot_dat = conf_dat %>% filter(Model == 'm2') %>% 
-  filter(MinObs == 2 & Type == 'Median') %>% 
-  group_by(Variable,Type,MinObs,Iteration,Reference) %>% 
-  mutate(TotalIteration = sum(Freq),
+#order full, single plot, make sure the 3 variables are in order 
+egglevs = conf_mats %>% filter(Variable == 'Egg') %>% select(Prediction,Variable) %>% mutate(ord = as.numeric(gsub('E','',Prediction)),Prediction) %>% unique %>% arrange(Variable,ord) %>% select(-ord)
+hostlevs = conf_mats %>% filter(Variable == 'Host') %>% select(Prediction,Variable) %>% unique %>% arrange(Variable,Prediction) 
+hablevs = conf_mats %>% filter(Variable == 'Habitat') %>% select(Prediction,Variable) %>% unique %>% arrange(Variable,Prediction) 
+all_levs = rbind(hostlevs,egglevs,hablevs)
+conf_mats = conf_mats %>% mutate(Prediction = factor(Prediction,levels=all_levs$Prediction),
+                                 Reference = factor(Reference,levels=all_levs$Prediction))
+
+#and also plot the from the re-predictions on the subsampled data 
+repredictions_dat = conf_mats %>% 
+  filter(Model == 'm2') %>%  #main figure, plot model 2 (W+B) 
+  group_by(Variable,MinObs,Iteration,Reference) %>% 
+  mutate(TotalIteration = sum(Freq), #within each of the 100 replicates, calculate the frequency of correct classifications
          Proportion = Freq / TotalIteration) %>% ungroup %>% 
   group_by(Prediction,Reference,Variable) %>% 
-  summarize(MedianFreq = median(Proportion),
-            MeanFreq = mean(Proportion))  
-conf_plotg = conf_plot_dat %>% 
-  filter(Variable == 'Host') %>% 
-  ggplot(aes(x=Prediction,y=Reference,fill=MedianFreq))+
-  geom_tile()+
-  scale_fill_continuous(low='white',high='darkblue')+
-  theme_bw(base_size=6)+
+  sum_stats(Proportion)
+
+#plot 
+repredictions_plot = repredictions_dat %>% 
+  ggplot(aes(x=Prediction,y=Reference,fill=mean,col=sd))+
+  geom_tile(col=NA)+
+  geom_point(size=0.2)+
+  scale_color_continuous(low='white',high='black')+
+  scale_fill_continuous(low='white',high='darkblue')+  theme_bw(base_size=6)+
   theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1),legend.position='top')
-conf_plotg
+repredictions_plot
 
-eggdat = conf_plot_dat %>% filter(Variable == 'Egg')
-egglevs = eggdat %>% ungroup %>% select(Prediction) %>% unique %>% mutate(ord = as.numeric(gsub('E','',Prediction))) %>% arrange(ord) 
-eggdat$Reference = factor(eggdat$Reference,levels=egglevs$Prediction)
-eggdat$Prediction = factor(eggdat$Prediction,levels=egglevs$Prediction)
-conf_plote = eggdat %>% 
-  ggplot(aes(x=Prediction,y=Reference,fill=MedianFreq))+
-  geom_tile()+
-  scale_fill_continuous(low='white',high='darkblue')+
-  theme_bw(base_size=6)+
-  theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1),legend.position='top')
-conf_plote
-
-conf_ploth = conf_plot_dat %>% 
-  filter(Variable == 'Environment') %>% 
-  ggplot(aes(x=Prediction,y=Reference,fill=MedianFreq))+
-  geom_tile()+
-  scale_fill_continuous(low='white',high='darkblue')+
-  theme_bw(base_size=6)+
-  theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1),legend.position='top')
-conf_ploth
-
-pdf('figures/MNLR_ConfusionMatrix-AUC_Overall_WithReplacement-HOST_2024MAR12.pdf',height=2.5,width=2)
-conf_plotg
+pdf('figures/MNLR_ConfusionMatrix-Repredictions-Unrelated_2024MAR17.pdf',height=3.5,width=3.5)
+repredictions_plot
 dev.off()
-
-pdf('figures/MNLR_ConfusionMatrix-AUC_Overall_WithReplacement-ENV_2024MAR12.pdf',height=1.5,width=1)
-conf_ploth
-dev.off()
-
-pdf('figures/MNLR_ConfusionMatrix-AUC_Overall_WithReplacement-EGG_2024MAR12.pdf',height=2.25,width=1.75)
-conf_plote
-dev.off()
-
-#what is overall predictability?
-model_dat %>% 
-  group_by(Variable,Facet,Label,Iteration) %>% 
-  filter(MinObs == 2 & Type == 'Median') %>% 
-  slice_min(logLoss,n=1) %>% ungroup %>% group_by(Variable,Label) %>% sum_stats(Accuracy) %>% data.frame
-

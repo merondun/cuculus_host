@@ -8,7 +8,7 @@
 #SBATCH --time=24:00:00
 
 #mamba activate snps
-#to submit all iterations: for i in $(cat CHRS.list); do for j in $(cat SUBSETS.list); do sbatch -J TREE_${i}_${j} ~/merondun/cuculus_host/phylogenetics/1.Subset_Samples_Filter.sh ${i} ${j} ; done ; done
+#to submit all iterations: for j in $(cat SUBSETS.list); do for i in $(cat CHRS.list); do sbatch -J TREE_${i}_${j} ~/merondun/cuculus_host/phylogenetics/1.Subset_Samples_Filter.sh ${i} ${j} ; done ; done
 mkdir vcfs ml_trees
 
 #mask with male-biased coverage 
