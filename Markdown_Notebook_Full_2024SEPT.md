@@ -3101,6 +3101,84 @@ dev.off()
 
 ```
 
+Plot Host and habitat availability across space:
+
+```R
+#### Plot geographic availability of host and habitat n=80
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/all_samples')
+.libPaths('~/mambaforge/envs/r/lib/R/library')
+library(tidyverse)
+library(viridis)
+library(ggpubr)
+library(sf)
+library(ggspatial)
+md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
+eggcols = md %>% ungroup %>% select(Egg) %>% unique %>% mutate(ord = as.numeric(gsub('E','',Egg))) %>% arrange(ord) %>% 
+  drop_na(Egg) %>% mutate(col = viridis(12,option='turbo')[1:11]) 
+eggcols = rbind(eggcols,data.frame(Egg='E6W3',ord=6,col='white'))
+
+##### Identify Samples   #####
+md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
+md <- md %>% filter(Analysis_GensAssociations == 1)
+
+#jitter points up to 1 lat/long for viewing
+md = md %>% mutate(LatJit = jitter(Latitude,amount =2),
+                   LonJit = jitter(Longitude,amount=2))
+sites = st_as_sf(md, coords = c("LonJit", "LatJit"), 
+                 crs = 4326, agr = "constant")
+
+#set up map and convert df to coordinate frame
+world = map_data("world")
+
+#habitat plot 
+habitat_sample_plot = ggplot() +
+  geom_polygon(data = world, aes(x = long, y = lat, group = group), col='grey90', fill='white') +
+  geom_sf(data = sites, 
+          aes(fill=Habitat),
+          size=3,show.legend = T,pch=21) +
+  xlab('')+ylab('')+
+  coord_sf(xlim = c(min(md$Longitude)-5, max(md$Longitude)+5), 
+           ylim = c(min(md$Latitude)-5, max(md$Latitude)+5), expand = FALSE)+
+  scale_fill_manual(values=viridis(4))+
+  theme_classic()+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),panel.background = element_rect(fill = "aliceblue"))+
+  theme(legend.text = element_text(size = 6),legend.title = element_text(size = 6),legend.key.size = unit(0.1, 'cm'))+
+  annotation_scale(line_width=0.5)+
+  guides(fill=guide_legend(override.aes=list(shape=21)))
+habitat_sample_plot
+
+#host plot
+hosts <- md %>% select(HostParentShort,HostShape,HostColor) %>% unique %>% arrange(HostParentShort) %>% 
+  mutate(HShape = 
+           case_when(
+             HostShape == 15 ~ 22,
+             HostShape == 16 ~ 21,
+             HostShape == 17 ~ 24,
+             HostShape == 18 ~ 23,
+             TRUE ~ 8
+           ))
+host_sample_plot = ggplot() +
+  geom_polygon(data = world, aes(x = long, y = lat, group = group), col='grey90', fill='white') +
+  geom_sf(data = sites, 
+          aes(fill=HostParentShort,shape=HostParentShort),
+          size=3,show.legend = T) +
+  xlab('')+ylab('')+
+  coord_sf(xlim = c(min(md$Longitude)-5, max(md$Longitude)+5), 
+           ylim = c(min(md$Latitude)-5, max(md$Latitude)+5), expand = FALSE)+
+  scale_fill_manual(values=hosts$HostColor,breaks=hosts$HostParentShort)+
+  scale_shape_manual(values=hosts$HShape,breaks=hosts$HostParentShort)+
+  theme_classic()+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),panel.background = element_rect(fill = "aliceblue"))+
+  theme(legend.text = element_text(size = 6),legend.title = element_text(size = 6),legend.key.size = unit(0.1, 'cm'))+
+  annotation_scale(line_width=0.5)
+host_sample_plot
+
+pdf('../../figures/20240908_ManyHost_SpatialDistributionHabitatHost.pdf',height=7,width=7)
+ggarrange(habitat_sample_plot,host_sample_plot,nrow=2)
+dev.off()
+
+```
+
 
 
 ## dbRDA
@@ -3663,7 +3741,23 @@ iqtree --redo -keep-ident -T 5 -s ml_trees/chr_MT_n89.min4.phy.varsites.phy --se
 And then compare egg shifts across both mtDNA and autosomal tree:
 
 ```R
- 
+#### Determine egg shift parsimony using binary classifications 
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/tree_comparison_mtauto/with_cp')
+.libPaths('~/mambaforge/envs/R/lib/R/library')
+library(ape)
+library(caper)
+library(ggtree)
+library(treeio)
+library(phytools)
+library(tidyverse)
+library(viridis)
+library(pheatmap)
+library(ggpubr)
+library(meRo)
+library(data.table)
+library(tangler)
+.libPaths('~/mambaforge/envs/r/lib/R/library')
+library(magick)
 
 # Read in trees and metadata 
 md <- read_tsv('~/merondun/cuculus_host/Metadata_Host.txt') %>% filter(Analysis_PopulationGenetics == 1) %>% drop_na(Egg)
@@ -3673,6 +3767,10 @@ md$dummy <- 1 # Assign fake dummy var so that all connections are plotted
 m = read.iqtree('ml_trees/chr_MT_n89.min4.phy.varsites.phy.contree')
 m1 <- root(as.phylo(m),outgroup = '387_CP_MBW_RUS_F')
 mt_tree <- drop.tip(m1,c('387_CP_MBW_RUS_F','386_CP_MBW_RUS_M'))
+
+# Mid rooted
+m0 <- drop.tip(as.phylo(m),c('387_CP_MBW_RUS_F','386_CP_MBW_RUS_M'))
+mt_tree <- midpoint.root(m0)
 
 ### AUTOSOME tree 
 a = read.iqtree('ml_trees/autos_LD_n89.min4.phy.varsites.phy.contree')
@@ -3778,7 +3876,7 @@ for (tree in c('mt_tree','a_tree')) {
   
   # Generate base tree 
   targ_tree <- get(tree)
-  ggt <- ggtree(targ_tree, layout = "circular",branch.length='none') %<+% md 
+  ggt <- ggtree(targ_tree, layout = "rectangular",branch.length='none') %<+% md 
   
   #grab only egg
   phenos <- as.data.frame(ggt$data %>% filter(isTip == TRUE))
@@ -3835,19 +3933,47 @@ for (tree in c('mt_tree','a_tree')) {
     node=1:t2$Nnode+Ntip(t2),
     fitER$lik.anc)
   
+  # For stochastic mapping 
+  obj <- describe.simmap(simfull,plot=FALSE)
+  mcmc_nodes <- as.data.frame(cbind(node=rownames(obj$ace),obj$ace)); rownames(mcmc_nodes) <- NULL
+  mcmc_nodes <- mcmc_nodes %>% mutate(across(starts_with('E'), as.numeric))
+  nodes_plot <- mcmc_nodes %>% filter(node %in% nodes$node)
+  rownames(nodes_plot) <- nodes_plot$node
+  nodes_plot$node <- as.integer(nodes_plot$node)
+  
   ## cols parameter indicate which columns store stats
-  pies <- nodepie(nodes, cols=2:12,outline.color='black',outline.size = 0.1)
+  pies <- nodepie(nodes_plot, cols=2:12,outline.color='black',outline.size = 0.1)
   pies <- lapply(pies, function(g) g+scale_fill_manual(values = egglevs$col,breaks=egglevs$Egg))
   
   t3 <- full_join(t2, data.frame(label = names(phenotypes), stat = phenotypes ), by = 'label')
   tp <- ggtree(t3,layout='rectangular',branch.length = 'none') %<+% md
   tp$data$dummy <- 1
-  tp_final <- tp + geom_inset(pies, width = .09, height = .09)+ 
-    geom_tippoint(aes(fill=Egg),pch=21,size=1)+
-    scale_fill_manual(values=egglevs$col,breaks=egglevs$Egg) 
-  assign(paste0(tree,'_pies'),tp_final)
-  
+  tp_final <- tp + geom_inset(pies, width = .09, height = .09)
+  tp_phenos <- tp_final +
+    geom_tippoint(aes(fill=Hap),pch=21,size=1.5)+
+    scale_fill_manual(values=md$HapCol,breaks=md$Hap)
+  assign(paste0(tree,'_nodes'),tp_final)
+  assign(paste0(tree,'_pies'),tp_phenos)
 }
+
+# Ensure ER fits better than SYM
+# First, look at AIC for ER vs SYM models:
+# Fit the SYM model
+fitSYM <- ape::ace(phenotypes, t2, model = "SYM", type = "discrete")
+logLik_SYM <- fitSYM$loglik # Extract the log-likelihood
+num_states <- ncol(fitSYM$lik.anc) # SYM has (s * (s - 1)) / 2 # rate parameters, s = the number of states
+k_SYM <- (num_states * (num_states - 1)) / 2  # rate parameters
+k_SYM <- k_SYM + (num_states - 1)  # add base frequencies
+AIC_SYM <- 2 * k_SYM - 2 * logLik_SYM
+AIC_SYM
+
+# Fit the ER model
+fitER <- ape::ace(phenotypes, t2, model = "ER", type = "discrete")
+logLik_ER <- fitER$loglik
+k_ER <- 1 + (ncol(fitER$lik.anc) - 1)  # base frequencies, there is 1 transition rate (k = 1) plus the base frequencies (number of states - 1)
+AIC_ER <- 2 * k_ER - 2 * logLik_ER
+cat('AIC for ER: ', AIC_ER, ' AIC for SYM: ',AIC_SYM,'\n')
+# ER fits better 
 
 # Grab the model results
 full_search_res <- rbindlist(full_tree_results)
@@ -3868,15 +3994,146 @@ full_search_res <- read_tsv('Full_Search_Results_20240806.txt')
 # Plot all connections 
 discord <- simple.tanglegram(tree1=mt_tree_pies,tree2=a_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
 
-pdf('../../figures/20240717_TreeCompare-mtDNA-Auto-NodePiesML.pdf',height=5,width=7)
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML.pdf',height=5,width=7)
 discord
 dev.off()
 
 # Swap 
 discord2 <- simple.tanglegram(tree1=a_tree_pies,tree2=mt_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
 
-pdf('../../figures/20240717_TreeCompare-Auto-mtDNA-NodePiesML.pdf',height=5,width=7)
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML.pdf',height=5,width=7)
 discord2
+dev.off()
+
+# Instead of hap colors for tips, do egg - we need tips so need to repeat this x4! 
+### EGG! ### 
+mt_egg <- mt_tree_nodes +
+  geom_tippoint(aes(fill=Egg),pch=22,size=1.5)+
+  scale_fill_manual(values=egglevs$col,breaks=egglevs$Egg)
+a_egg <- a_tree_nodes +
+  geom_tippoint(aes(fill=Egg),pch=22,size=1.5)+
+  scale_fill_manual(values=egglevs$col,breaks=egglevs$Egg)
+discord_egg <- simple.tanglegram(tree1=mt_egg,tree2=a_egg,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_egg2 <- simple.tanglegram(tree1=a_egg,tree2=mt_egg,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML-EGG.pdf',height=5,width=7)
+discord_egg
+dev.off()
+
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML-EGG.pdf',height=5,width=7)
+discord_egg2
+dev.off()
+
+### K=5! ### 
+#add same custom grey color scale 
+kcols = data.frame(Kcols = gray.colors(5,start=0.05,end=0.95)[c(1,4,3,5,2)], AncestryK5 = paste0('K',seq(1,5,1)))
+
+mt_k5 <- mt_tree_nodes +
+  geom_tippoint(aes(fill=AncestryK5),pch=22,size=1.5)+
+  scale_fill_manual(values=kcols$Kcols,breaks=kcols$AncestryK5)
+a_k5 <- a_tree_nodes +
+  geom_tippoint(aes(fill=AncestryK5),pch=22,size=1.5)+
+  scale_fill_manual(values=kcols$Kcols,breaks=kcols$AncestryK5)
+discord_k5 <- simple.tanglegram(tree1=mt_k5,tree2=a_k5,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_k52 <- simple.tanglegram(tree1=a_k5,tree2=mt_k5,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML-K5.pdf',height=5,width=7)
+discord_k5
+dev.off()
+
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML-K5.pdf',height=5,width=7)
+discord_k52
+dev.off()
+
+### Hap! ### 
+mt_hap <- mt_tree_nodes +
+  geom_tippoint(aes(fill=Hap),pch=22,size=1.5)+
+  scale_fill_manual(values=md$HapCol,breaks=md$Hap)
+a_hap <- a_tree_nodes +
+  geom_tippoint(aes(fill=Hap),pch=22,size=1.5)+
+  scale_fill_manual(values=md$HapCol,breaks=md$Hap)
+discord_hap <- simple.tanglegram(tree1=mt_hap,tree2=a_hap,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_hap2 <- simple.tanglegram(tree1=a_hap,tree2=mt_hap,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML-HAP.pdf',height=5,width=7)
+discord_hap
+dev.off()
+
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML-HAP.pdf',height=5,width=7)
+discord_hap2
+dev.off()
+
+### Host! ###  
+hosts <- md %>% filter(ID %in% mt_tree$tip.label) %>% select(HostParentShort,HostShape,HostColor) %>% unique %>% arrange(HostParentShort) %>% 
+  mutate(HShape = 
+           case_when(
+    HostShape == 15 ~ 22,
+    HostShape == 16 ~ 21,
+    HostShape == 17 ~ 24,
+    HostShape == 18 ~ 23,
+    TRUE ~ 8
+  ))
+mt_host <- mt_tree_nodes +
+  geom_tippoint(aes(fill=HostParentShort,shape=HostParentShort),size=1.5)+
+  scale_fill_manual(values=hosts$HostColor,breaks=hosts$HostParentShort)+
+  scale_shape_manual(values=hosts$HShape,breaks=hosts$HostParentShort)
+a_host <- a_tree_nodes +
+  geom_tippoint(aes(fill=HostParentShort,shape=HostParentShort),size=1.5)+
+  scale_fill_manual(values=hosts$HostColor,breaks=hosts$HostParentShort)+
+  scale_shape_manual(values=hosts$HShape,breaks=hosts$HostParentShort)
+discord_host <- simple.tanglegram(tree1=mt_host,tree2=a_host,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_host2 <- simple.tanglegram(tree1=a_host,tree2=mt_host,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML-HOST.pdf',height=5,width=7)
+discord_host
+dev.off()
+
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML-HOST.pdf',height=5,width=7)
+discord_host2
+dev.off()
+
+### Geography! ###  
+geos <- md %>% filter(ID %in% mt_tree$tip.label) %>% select(KDist,KDShape,KDCol) %>% unique 
+mt_geo <- mt_tree_nodes +
+  geom_tippoint(aes(fill=KDist,shape=KDist),size=1.5)+
+  scale_fill_manual(values=geos$KDCol,breaks=geos$KDist)+
+  scale_shape_manual(values=geos$KDShape,breaks=geos$KDist)
+a_geo <- a_tree_nodes +
+  geom_tippoint(aes(fill=KDist,shape=KDist),size=1.5)+
+  scale_fill_manual(values=geos$KDCol,breaks=geos$KDist)+
+  scale_shape_manual(values=geos$KDShape,breaks=geos$KDist)
+discord_geo <- simple.tanglegram(tree1=mt_geo,tree2=a_geo,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_geo2 <- simple.tanglegram(tree1=a_geo,tree2=mt_geo,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML-GEO.pdf',height=5,width=7)
+discord_geo
+dev.off()
+
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML-GEO.pdf',height=5,width=7)
+discord_geo2
+dev.off()
+
+### Habitat! ### 
+mt_hab <- mt_tree_nodes +
+  geom_tippoint(aes(fill=Habitat),pch=22,size=1.5)+
+  scale_fill_manual(values=viridis(4))
+a_hab <- a_tree_nodes +
+  geom_tippoint(aes(fill=Habitat),pch=22,size=1.5)+
+  scale_fill_manual(values=viridis(4))
+discord_hab <- simple.tanglegram(tree1=mt_hab,tree2=a_hab,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_hab2 <- simple.tanglegram(tree1=a_hab,tree2=mt_hab,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-Auto-NodePiesML-HABITAT.pdf',height=5,width=7)
+discord_hab
+dev.off()
+
+pdf('../../figures/20240905_TreeCompare-Auto-mtDNA-NodePiesML-HABITAT.pdf',height=5,width=7)
+discord_hab2
 dev.off()
 
 # And as before, add the shift data 
@@ -3902,10 +4159,11 @@ confs_all$Egg <- factor(confs_all$Egg,levels=eggboth$Egg)
 
 # Plot
 plot_mtaut <- mt_vs_autboth %>% ungroup %>% 
+  filter(Egg != 'Multiclass') %>% 
   ggplot(aes(x=Egg,y=shifts,fill=Egg))+
   geom_hline(yintercept=0,lty=2)+
   geom_hline(yintercept=c(-1,1),lty=3,col='darkgray')+
-  geom_errorbar(data=confs_all,width=0.2,col='black',aes(x=Egg,ymin=conf_low,ymax=conf_high),inherit.aes=FALSE,position=position_nudge(x=-0.15))+
+  geom_errorbar(data=confs_all %>% filter(Egg != 'Multiclass'),width=0.2,col='black',aes(x=Egg,ymin=conf_low,ymax=conf_high),inherit.aes=FALSE,position=position_nudge(x=-0.15))+
   geom_boxplot(width = .15,outlier.shape = NA, alpha = 0.9,lwd=0.25,position=position_nudge(x=0.15)) +
   #ggdist::stat_halfeye(width = .3,.width = 0,justification = -.2, point_colour = NA,alpha = 0.95,normalize='groups')+
   scale_fill_manual(values=eggboth$col,breaks=eggboth$Egg)+
@@ -3915,8 +4173,8 @@ plot_mtaut <- mt_vs_autboth %>% ungroup %>%
   coord_flip(ylim=c(-15,15))
 plot_mtaut
 
-png('../../figures/20240807_mtDNA-vs-Autosomal-shifts-MCMC-Multiclass.png',units='in',res=300,height=4,width=4)
-pdf('../../figures/20240807_mtDNA-vs-Autosomal-shifts-MCMC-Multiclass-Boxes.pdf',height=4.5,width=4)
+png('../../figures/20240905_mtDNA-vs-Autosomal-shifts-MCMC-Multiclass.png',units='in',res=300,height=4,width=4)
+pdf('../../figures/20240905_mtDNA-vs-Autosomal-shifts-MCMC-Iterative-Only-Boxes.pdf',height=4.5,width=4)
 plot_mtaut
 dev.off()
 
@@ -4885,133 +5143,30 @@ gtp
 dev.off()
 ```
 
-## Blast NDUFAF4 other Cuculiformes
-
-### Blast-Based
-
-Only one other Cuculiformes species with a W assembly: [Phaenicophaeus curvirostris](https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_032191515.2/). 
-
-Download the genome, prep for blast:
-
-```bash
-# Make blast db
-makeblastdb -in GCA_032191515.2_BPBGC_Pcur_1.0_genomic.fna -parse_seqids -dbtype nucl
-
-#gene to blast
-ndufaf4=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/NDUFAF4.fa
-
-#also blast against cuckoo 
-cuckoo_blastdb=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/blast_db/GCA_017976375.1_bCucCan1.pri_genomic.CHR
-
-#first blast against  cuckoo
-blastn -query $ndufaf4 -db $cuckoo_blastdb -evalue 1e-6 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sstrand' -num_threads 5
-```
-
-As expected, with common cuckoo it blasts to chr3 and chrW:
-
-| qseqid                         | sseqid | pident | length | mismatch | gapopen | qstart | qend | sstart   | send     | evalue   | bitscore | sstrand |
-| ------------------------------ | ------ | ------ | ------ | -------- | ------- | ------ | ---- | -------- | -------- | -------- | -------- | ------- |
-| NC_071403.1:c25515677-25511697 | chr_3  | 100    | 3981   | 0        | 0       | 1      | 3981 | 25515677 | 25511697 | 0        | 7352     | minus   |
-| NC_071403.1:c25515677-25511697 | chr_3  | 85.891 | 645    | 59       | 6       | 3032   | 3675 | 25516398 | 25515785 | 0        | 658      | minus   |
-| NC_071403.1:c25515677-25511697 | chr_W  | 95.745 | 141    | 4        | 2       | 3285   | 3424 | 21177317 | 21177456 | 3.25E-56 | 226      | plus    |
-
-And against the chestnut-breasted malkoha:
-
-```bash
-phaen_blastdb=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Phaenicophaeus_curvirostris/GCA_032191515.2_BPBGC_Pcur_1.0_genomic.fna
-
-blastn -query $ndufaf4 -db $phaen_blastdb -evalue 1e-6 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sstrand' -num_threads 5
-```
-
-| qseqid                         | sseqid           | pident | length | mismatch | gapopen | qstart | qend | sstart  | send    | evalue   | bitscore | sstrand |
-| ------------------------------ | ---------------- | ------ | ------ | -------- | ------- | ------ | ---- | ------- | ------- | -------- | -------- | ------- |
-| NC_071403.1:c25515677-25511697 | gb\|CM063363.1\| | 87.021 | 2612   | 244      | 40      | 1396   | 3980 | 5656863 | 5659406 | 0        | 2857     | plus    |
-| NC_071403.1:c25515677-25511697 | gb\|CM063363.1\| | 87.5   | 336    | 33       | 5       | 3032   | 3365 | 5653399 | 5653727 | ######## | 379      | plus    |
-| NC_071403.1:c25515677-25511697 | gb\|CM063363.1\| | 84.737 | 190    | 22       | 7       | 1      | 186  | 5654507 | 5654693 | 2.21E-43 | 183      | plus    |
-| NC_071403.1:c25515677-25511697 | gb\|CM063363.1\| | 83.871 | 124    | 20       | 0       | 3558   | 3681 | 5654302 | 5654425 | 6.32E-24 | 119      | plus    |
-
-Interesting, how about if we go deeper into the phylogeny:
-
-| Species                                                      | Common               | Accession       | Link                                                         |
-| ------------------------------------------------------------ | -------------------- | --------------- | ------------------------------------------------------------ |
-| [Clamator_glandarius](https://www.ncbi.nlm.nih.gov/datasets/taxonomy/78203) | Great_Spotted_Cuckoo | GCA_033459285.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/033/459/285/GCA_033459285.1_BPBGC_Cgla_1.0/GCA_033459285.1_BPBGC_Cgla_1.0_genomic.fna.gz |
-| [Ceuthmochares_aereus](https://www.ncbi.nlm.nih.gov/datasets/taxonomy/1961834) | Blue_Malkoha         | GCA_013398935.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/013/398/935/GCA_013398935.1_ASM1339893v1/GCA_013398935.1_ASM1339893v1_genomic.fna.gz |
-| Tapera_naevia                                                | Striped_Cuckoo       | GCA_033556795.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/033/556/795/GCA_033556795.1_BPBGC_Tnae_1.0/GCA_033556795.1_BPBGC_Tnae_1.0_genomic.fna.gz |
-| [Coccyzus_lansbergi](https://ebird.org/species/gyccuc)       | Grey_capped_Cuckoo   | GCA_033558105.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/033/558/105/GCA_033558105.1_BPBGC_Clan_1.0/GCA_033558105.1_BPBGC_Clan_1.0_genomic.fna.gz |
-| [Geococcyx_californianus](https://www.ncbi.nlm.nih.gov/datasets/taxonomy/8947) | Greater_Roadrunner   | GCA_013389885.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/013/389/885/GCA_013389885.1_ASM1338988v1/GCA_013389885.1_ASM1338988v1_genomic.fna.gz |
-| [Piaya_cayana](https://www.ncbi.nlm.nih.gov/datasets/taxonomy/33601) | Squirrel_Cuckoo      | GCA_013389865.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/013/389/865/GCA_013389865.1_ASM1338986v1/GCA_013389865.1_ASM1338986v1_genomic.fna.gz |
-| [Dromococcyx_pavoninus](https://www.ncbi.nlm.nih.gov/datasets/taxonomy/3054325) | Pavonine_Cuckoo      | GCA_033558185.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/033/558/185/GCA_033558185.1_BPBGC_Dpav_1.0/GCA_033558185.1_BPBGC_Dpav_1.0_genomic.fna.gz |
-| Cuculus_canorus                                              | Common_Cuckoo        | GCA_017976375.1 | https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/017/976/375/GCF_017976375.1_bCucCan1.pri/GCF_017976375.1_bCucCan1.pri_genomic.fna.gz |
-
-Loop it:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=2
-#SBATCH --time=48:00:00
-
-#gene to blast
-ndufaf4=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/NDUFAF4.fa
-results_dir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/results
-base_dir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/
-RUN=$1
-
-#make directory
-mkdir ${RUN}
-
-#grab the genome link for wget
-file_path=$(grep ${RUN} All_Species.txt | awk '{print $4}')
-
-#go into directory and download file
-cd ${RUN}
-wget ${file_path}
-gunzip *gz
-
-#make blastdb
-makeblastdb -in *fna -parse_seqids -dbtype nucl
-
-#blast
-blastn -query $ndufaf4 -db *fna -evalue 1e-6 -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sstrand' -num_threads 2 > $results_dir/${RUN}.blast.txt
-
-#grab those sequences as well to make a tree
-awk -v r=${RUN} '{
-    OFS="\t";
-    start=$9;
-    end=$10;
-    if (start > end) {
-        print $2, end, start, r"_"NR, "0", "-";
-    } else {
-        print $2, start, end, r"_"NR, "0", "+";
-    }
-}' $results_dir/${RUN}.blast.txt | sed 's/gb|//g' | sed 's/|//g' | sed 's/ref//g' > ${RUN}.bed
-
-# Merge any hits found within 3KB of one another
-bedtools sort -i ${RUN}.bed | bedtools merge -i - -d 3000 -c 4,5,6 -o first,distinct,distinct > ${RUN}_merged.bed
-
-bedtools getfasta -fi *fna -bed ${RUN}_merged.bed -fo $results_dir/${RUN}.fa -nameOnly
-
-```
-
-How many sequences per species:
-
-```bash
-seqkit stats *fa
-processed files:  10 / 10 [======================================] ETA: 0s. done
-file                        format  type  num_seqs  sum_len  min_len  avg_len  max_len
-Clamator_glandarius.fa      FASTA   DNA          1    5,313    5,313    5,313    5,313
-Cuculus_canorus.fa          FASTA   DNA          2    4,840      139    2,420    4,701
-Dromococcyx_pavoninus.fa    FASTA   DNA          1    3,650    3,650    3,650    3,650
-Geococcyx_californianus.fa  FASTA   DNA          1    3,760    3,760    3,760    3,760
-Piaya_cayana.fa             FASTA   DNA          1    5,032    5,032    5,032    5,032
-Tapera_naevia.fa            FASTA   DNA          1    2,528    2,528    2,528    2,528
-```
+## NDUFAF4 across Cuculiformes
 
 ### Fastq Alignment-Based
+
+Species to assay:
+
+| Cuculus  canorus        | Female | Illumina | SRR11394165                          |
+| ----------------------- | ------ | -------- | ------------------------------------ |
+| Cuculus canorus         | Female | Illumina | SRR11531702                          |
+| Cuculus canorus         | Female | Illumina | SRR11531718                          |
+| Cuculus canorus         | Male   | Illumina | SRR11531726                          |
+| Cuculus canorus         | Male   | Illumina | SRR11531741                          |
+| Cuculus micropterus     | Male   | Illumina | SRR14117632                          |
+| Cuculus micropterus     | Female | Illumina | SRR14117631                          |
+| Cuculus poliocephalus   | Male   | Illumina | SRR14117570                          |
+| Cuculus poliocephalus   | Female | Illumina | SRR14117568                          |
+| Cuculus canorus         | Female | Illumina | SRR99999129                          |
+| Clamator glandarius     | Female | HiFi     | SRR26807982                          |
+| Coccyzus lansbergi      | Female | HiFi     | SRR26902471                          |
+| Cuculus canorus         | Female | HiFi     | All bCucCan1.pri Reads; PRJNA1008121 |
+| Dromococcyx pavoninus   | Female | HiFi     | SRR26905917                          |
+| Geococcyx californianus | Female | Illumina | SRR9994302                           |
+| Piaya cayana            | Female | Illumina | SRR9947006                           |
+| Tapera naevia           | Female | HiFi     | SRR26905805                          |
 
 From the merged blast hits on the cuckoo genome, extract the sequence corresponding to the 2 NDUFAF4 hits for inspection:
 
@@ -5043,15 +5198,15 @@ echo "Aligning sample: ${RUN}"
 
 SCRATCH=/tmp/$SLURM_JOB_ID
 genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams
+outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
 cuckoo_hifi=/dss/dsslegfs01/pr53da/pr53da-dss-0021/rawdata/External_Data_SRA_GenomeArk/PacBio_GenomeArk/Cuculus_canorus/bCucCan1_pacbio.fastq.gz
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_5gb
+subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
 
-# Subset 5gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${cuckoo_hifi} out=${subdir}/${RUN}.5gb.fastq.gz maxbasesout=5000000000
-minimap2 -ax map-pb -t 8 ${genome} ${subdir}/${RUN}.5gb.fastq.gz > ${SCRATCH}/${RUN}.sam
+# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
+bbduk.sh in=${cuckoo_hifi} out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
+minimap2 -ax map-pb -t 8 ${genome} ${subdir}/${RUN}.10gb.fastq.gz > ${SCRATCH}/${RUN}.sam
 samtools sort ${SCRATCH}/${RUN}.sam | samtools view -F 4 -b > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam;
+samtools index -b ${outdir}/${RUN}.bam; 
 ```
 
 Cuckoo illumina data:
@@ -5075,14 +5230,14 @@ echo "Aligning sample: ${RUN}"
 SCRATCH=/tmp/$SLURM_JOB_ID
 genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
 qcdata=/dss/dsslegfs01/pr53da/pr53da-dss-0021/shared_resources/trimmed_fastq
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_5gb
+outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
+subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
 
-# Subset 5gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${qcdata}/${RUN}.trim.fastq.gz out=${subdir}/${RUN}.5gb.fastq.gz maxbasesout=5000000000
-bwa mem -M -p -t 10 ${genome} ${subdir}/${RUN}.5gb.fastq.gz | samtools sort -@10 -o ${SCRATCH}/${RUN}.bam -;
+# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
+bbduk.sh in=${qcdata}/${RUN}.trim.fastq.gz out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
+bwa mem -M -p -t 10 ${genome} ${subdir}/${RUN}.10gb.fastq.gz | samtools sort -@10 -o ${SCRATCH}/${RUN}.bam -;
 samtools view -F 4 -b ${SCRATCH}/${RUN}.bam > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam
+samtools index -b ${outdir}/${RUN}.bam; 
 ```
 
 Outgroup HiFi data:
@@ -5105,15 +5260,15 @@ echo "Aligning sample: ${RUN}"
 
 SCRATCH=/tmp/$SLURM_JOB_ID
 genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams
+outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
 rawdata=/dss/dsslegfs01/pr53da/pr53da-dss-0021/rawdata/External_Data_SRA_GenomeArk/SRA_Cuculiformes_Outgroups
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_5gb
+subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
 
-# Subset 5gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${rawdata}/${RUN}_1.fastq.gz out=${subdir}/${RUN}.5gb.fastq.gz maxbasesout=5000000000
-minimap2 -ax map-pb -t 8 ${genome} ${subdir}/${RUN}.5gb.fastq.gz > ${SCRATCH}/${RUN}.sam
+# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
+bbduk.sh in=${rawdata}/${RUN}_1.fastq.gz out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
+minimap2 -ax map-pb -t 8 ${genome} ${subdir}/${RUN}.10gb.fastq.gz > ${SCRATCH}/${RUN}.sam
 samtools sort ${SCRATCH}/${RUN}.sam | samtools view -F 4 -b > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam
+samtools index -b ${outdir}/${RUN}.bam; 
 ```
 
 And outgroup Illumina:
@@ -5137,14 +5292,14 @@ echo "Aligning sample: ${RUN}"
 SCRATCH=/tmp/$SLURM_JOB_ID
 genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
 rawdata=/dss/dsslegfs01/pr53da/pr53da-dss-0021/rawdata/External_Data_SRA_GenomeArk/SRA_Cuculiformes_Outgroups
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_5gb
+outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
+subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
 
-# Subset 5gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${rawdata}/${RUN}_1.fastq.gz out=${subdir}/${RUN}.5gb.fastq.gz maxbasesout=5000000000
-bwa mem -M -t 10 ${genome} ${subdir}/${RUN}.5gb.fastq.gz | samtools sort -@10 -o ${SCRATCH}/${RUN}.bam -;
+# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
+bbduk.sh in=${rawdata}/${RUN}_1.fastq.gz out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
+bwa mem -M -t 10 ${genome} ${subdir}/${RUN}.10gb.fastq.gz | samtools sort -@10 -o ${SCRATCH}/${RUN}.bam -;
 samtools view -F 4 -b ${SCRATCH}/${RUN}.bam > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam;
+samtools index -b ${outdir}/${RUN}.bam;   
 ```
 
 Calculate coverage:
@@ -5154,14 +5309,15 @@ for RUN in $(ls *bam | sed 's/.bam//g'); do
 
 cds=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/CDS_Regions_N3_BothParalogs.bed
 
-# Calculate coverage MQ60, --by 50 reports coverage in 50bp regions 
-mosdepth --threads 3 --mapq 60 --by ${cds} --fast-mode --no-per-base ../coverage/${RUN}_cds ${RUN}.bam
+# Calculate coverage MQ50 
+mosdepth --threads 3 --mapq 50 --by ${cds} --fast-mode --no-per-base ../coverage/${RUN}_cds50 ${RUN}.bam
 
 done 
 
 # After, in /coverage/, merge into single file:
-for i in $(ls *_cds.regions.bed | sed 's/_cds.regions.bed//g'); do awk -v i=${i} '{OFS="\t"}{print $1, $2, $3, $4, i}' ${i}_cds.regions.bed > ${i}.cds.cov ; done
-cat *.cds.cov > NDUFAF4_MQ60_Coverage_2024JULY25_CDS.txt
+for i in $(ls *_cds50.regions.bed | sed 's/_cds50.regions.bed//g'); do awk -v i=${i} '{OFS="\t"}{print $1, $2, $3, $4, i}' ${i}_cds50.regions.bed > ${i}.cds50.cov ; done
+cat *.cds50.cov > NDUFAF4_MQ50_Coverage_2024SEPT07.txt
+# I then add e.g. species / tech in excel manually since there are not so many fields 
 ```
 
 ### Extract Consensus
@@ -5187,75 +5343,69 @@ RUN=$1
 # Define paths to your files
 genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
 regions=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/WholeGene_Regions.bed
+fastadir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/fastas
+bamdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
 
-mkdir ${RUN}
-cd ${RUN}
+cd $fastadir
+mkdir results scratch scratch/${RUN}
+cd scratch/${RUN}
 
 # Generate consensus sequence in VCF format
-bcftools mpileup -f $genome -Ou -a AD -R $regions ../${RUN}.bam | \
-	bcftools call -m -Ov | \
-	bcftools norm -f $genome -Oz -o ${RUN}.vcf.gz
+bcftools mpileup -f $genome -Ou -a AD -R $regions ${bamdir}/${RUN}.bam | \
+        bcftools call -m -Ov | \
+        bcftools norm -f $genome -Oz -o ${RUN}.vcf.gz
 bcftools index ${RUN}.vcf.gz
 
-# If coverage is below 1x, or MQ < 30 - exclude! 
+# If coverage is below 1x, or MQ < 50 - exclude!
 MINDP=1
-bcftools view -e "DP < ${MINDP} || MQ < 30 || F_MISSING > 0.1" -Oz -o ${RUN}.Filtered.vcf.gz ${RUN}.vcf.gz
+bcftools view -V indels -e "DP < ${MINDP} || MQ < 50 || F_MISSING > 0.1" -Oz -o ${RUN}.Filtered.vcf.gz ${RUN}.vcf.gz
 bcftools index ${RUN}.Filtered.vcf.gz
 
-# Create FASTA file with '-' for regions with no coverage
-bcftools consensus -f $genome -o ${RUN}.fa -H 1 --absent - ${RUN}.Filtered.vcf.gz
+# Create FASTA file for chrW with '-' for regions with no coverage
+samtools faidx $genome chr_W:21149910-21177468 | \
+    bcftools consensus ${RUN}.Filtered.vcf.gz --absent - | \
+    awk -v run=${RUN}_W '/^>/{print ">" run; next} {print}' > ${fastadir}/results/${RUN}.W.fa
 
-# Extract region
-bedtools getfasta -fi ${RUN}.fa -bed ${regions} -fo ${RUN}_regions.fa -nameOnly
-awk -v prefix="${RUN}" '/^>/ {split($0,a," "); sub(">","",a[1]); print ">" prefix "_" a[1]} !/^>/ {print}' ${RUN}_regions.fa > ../gene_alignment/${RUN}.fa
+# and for chr3
+samtools faidx $genome chr_3:25511697-25515677 | \
+    bcftools consensus ${RUN}.Filtered.vcf.gz --absent - | \
+    awk -v run=${RUN}_3 '/^>/{print ">" run; next} {print}' > ${fastadir}/results/${RUN}.3.fa
 ```
 
 Ensuring that we only trim and create a tree for the species which have coverage for chrW / chr3: 
 
 ```bash
-cat *fa > All_Except_064.fa
-
-# Align and keep the coordinates of the chr3 autosome 
-mafft --thread 10 --auto --addfragments All_Except_064.fa --keeplength --reorder 064_CC_GRW_BGR_M__SRR11531726.fasta > NDUFAF4_chr3anchor.fa
-
 # Align freely
-mafft --thread 10 --auto All.fa > NDUFAF4_freealign.fa
+mafft --thread 10 --auto Paralogs_G75.fa > NDUFAF4_freealign.fa
 
-# With python, split the MSA
-from Bio import SeqIO
+# Trim
+trimal -automated1 -in NDUFAF4_freealign.fa -out NDUFAF4_freealign_trimalAuto.fa
 
-# Path to your MSA file in FASTA format
-msa_file = 'NDUFAF4_chr3anchor.fa'
-
-# Read the MSA file and create individual FASTA files
-with open(msa_file, 'r') as msa:
-    for record in SeqIO.parse(msa, 'fasta'):
-        filename = f"{record.id}.fa"
-        with open(filename, 'w') as output_file:
-            SeqIO.write(record, output_file, 'fasta')
+# Tree
+iqtree --redo -keep-ident -T 20 -s NDUFAF4_freealign_trimalAuto.fa --seqtype DNA -m "MFP" -B 1000
 
 # And then identify gaps 
 seqkit stats -a *
 
-# Identify the samples with < 50% gaps, and create a tree:
-for i in $(cat Keep.list); do cat ${i} >> NDUFAF4_Gapless50.fa; done
+# Identify the samples with < 70% gaps, and create a tree:
+for i in $(cat Keep.list); do cat ${i} >> NDUFAF4_freealign_trimalAuto.fa; done
 
 # Tree
-iqtree --redo -keep-ident -T 20 -s NDUFAF4_Gapless50.fa --seqtype DNA -m "GTR" -B 1000
+iqtree --redo -keep-ident -T 20 -s NDUFAF4_freealign_trimalAuto.fa --seqtype DNA -m "GTR" -B 1000
 ```
 
 Plot Coverage and Tree:
 
 ```R
 #### Plot NDUFAF4 Coverage 
-setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/coverage/')
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/coverage/')
 .libPaths('~/mambaforge/envs/R/lib/R/library')
 library(tidyverse)
 library(viridis)
 
 # Load in coverage data 
-c <- read_tsv('NDUFAF4_MQ60_Coverage_2024JULY25_CDS_WGA.txt')
-c$Species <- factor(c$Species,levels=c('Cuculus_canorus','Cuculus_micropterus','Cuculus_poliocephalus','Clamator_glandarius','Coccyzus_lansbergi','Piaya_cayana','Dromococcyx_pavoninus','Tapera_naevia','Geococcyx_californianus'))
+c <- read_tsv('NDUFAF4_MQ50_CoverageRegions_2024SEPT07.txt')
+c$Species <- factor(c$Species,levels=c('Cuculus_canorus','Cuculus_micropterus','Cuculus_poliocephalus','Clamator_glandarius','Coccyzus_lansbergi','Piaya_cayana','Dromococcyx_pavoninus','Geococcyx_californianus'))
 c <- c %>% arrange(Species,Coverage)
 c$ID <- factor(c$ID,levels=unique(c$ID))
 
@@ -5280,7 +5430,7 @@ cp <- c %>%
   theme(legend.position='top')
 cp
 
-pdf('../../../../figures/20240807_NDUFAF4_Coverage.pdf',height=2.75,width=2.25)
+pdf('../../../../../figures/20240907_NDUFAF4_Coverage.pdf',height=2.75,width=2.25)
 cp
 dev.off()
 
@@ -5292,9 +5442,10 @@ allcds <- c %>%
   geom_point(size=3,pch=21,position=position_jitter(height=0.15))+
   facet_grid(Object~Sex,scales='free')+
   theme_bw()
+allcds
 
-png('NDUFAF4_Coverage-IncludingCDS.png',units='in',res=300,height=3.5,width=7)
-cp
+pdf('../../../../../figures/NDUFAF4_Coverage-IncludingCDS.pdf',height=6,width=6)
+allcds
 dev.off()
 
 # Plot Tree afterwards
@@ -5302,30 +5453,30 @@ library(ggtree)
 library(treeio)
 
 # Free alignment
-iqtree = read.iqtree('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams/gene_alignment/free_align/NDUFAF4_Gapless50.fa.contree')
+iqtree = read.iqtree('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/fastas/results/filtered_outs/NDUFAF4_freealign_trimalAuto.fa.contree')
 
-iqtr = root(as.phylo(iqtree),'Geococcyx_californianus_SRR9994302_chr_3_25511697_25515677')
+iqtr = root(as.phylo(iqtree),'Clamator_glandarius_SRR26807982_3')
 
 md <- read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams/Metadata.txt')
 g <- ggtree(iqtr,layout='rectangular')
 #g <- ggtree(iqtr,layout='ape')
-g$data <- g$data %>% mutate(Chromosome = ifelse(grepl('chr_W',label),'chrW','chr3'),
-                            label = gsub('_chr_W.*','',label),
-                            label = gsub('_chr_3.*','',label))
+g$data <- g$data %>% mutate(Chromosome = ifelse(grepl('W$',label),'chrW','chr3'),
+                            label = gsub('_W$','',label),
+                            label = gsub('_3$','',label))
 g$data <- left_join(g$data,md %>% dplyr::rename(label = ID))
 
 #plot with outgroups 
 gtree <- g +
   geom_tippoint(aes(col=Chromosome,shape=Species),size=1,stroke=1)+
-  geom_nodelab(aes(label=node),geom = 'text',size=1.5)+ 
-  scale_shape_manual(values=c(1,2,3,4,5,6,7,8,9))+
+  geom_nodelab(aes(label=label),geom = 'text',size=2,hjust = -3)+ 
+  scale_shape_manual(values=c(2,3,1,4,8))+
   xlim(c(0,1))+
   #geom_tiplab(aes(label=Species),size=2,offset = 0.05)+
-  geom_tiplab(size=2,offset = 0.05)+
-  theme(legend.position='none')
+  geom_tiplab(size=2,offset = 0.02)+
+  theme(legend.position='top')
 gtree
 
-pdf('../../../../figures/20240806_NDUFAF4-ParalogTree.pdf',height=2.75,width=2.5)
+pdf('../../../../../figures/20240907_NDUFAF4-ParalogTree.pdf',height=2.75,width=2.5)
 gtree
 dev.off()
 
@@ -5401,4 +5552,483 @@ dev.off()
 ```
 
 ![image-20240322112728027](C:\Users\herit\AppData\Roaming\Typora\typora-user-images\image-20240322112728027.png)
+
+## Discordance: W + mtDNA
+
+Ensure that the topologies of the W / mtDNA show the same results using n=60 females:
+
+```bash
+#!/bin/bash
+
+#SBATCH --get-user-env
+#SBATCH --mail-user=merondun@bio.lmu.de
+#SBATCH --clusters=biohpc_gen
+#SBATCH --partition=biohpc_gen_normal
+#SBATCH --cpus-per-task=5
+#SBATCH --time=48:00:00
+
+auto=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/merged/snps_only/chr_1.SNPS.vcf.gz
+mtdna=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/merged/snps_only/chr_MT.SNPS.vcf.gz
+w=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/merged/snps_only/chr_W.SNPS.vcf.gz
+
+#Subset VCFS
+bcftools view --samples-file Females.list -Ou ${auto} | \
+                        bcftools view --types snps --min-alleles 2 --max-alleles 2 --min-af 0.05 --max-af 0.95 -Ou | \
+                                        bcftools +prune -m 0.1 --window 5kb -Oz -o autos_LD_n60.vcf.gz
+bcftools index autos_LD_n60.vcf.gz
+
+# and mtDNA
+bcftools view --samples-file Females.list -Ou ${mtdna} | \
+                        bcftools view --types snps --min-alleles 2 --max-alleles 2 --min-af 0.05 --max-af 0.95 -Oz -o chr_MT_n60.vcf.gz
+bcftools index chr_MT_n60.vcf.gz
+
+# and W
+bcftools view --samples-file Females.list -Ou ${w} | \
+                        bcftools view --types snps --min-alleles 2 --max-alleles 2 --min-af 0.05 --max-af 0.95 -Oz -o chr_W_n60.vcf.gz
+bcftools index chr_W_n60.vcf.gz
+
+#create tree, autosomes
+python ~/modules/vcf2phylip.py -i autos_LD_n60.vcf.gz -f --output-folder ml_trees
+iqtree --redo -keep-ident -T 5 -s ml_trees/autos_LD_n60.min4.phy --seqtype DNA -m "MFP+ASC" -B 1000
+iqtree --redo -keep-ident -T 5 -s ml_trees/autos_LD_n60.min4.phy.varsites.phy --seqtype DNA -m "MFP+ASC" -B 1000
+
+#create tree, mtdna
+python ~/modules/vcf2phylip.py -i chr_MT_n60.vcf.gz -f --output-folder ml_trees
+iqtree --redo -keep-ident -T 5 -s ml_trees/chr_MT_n60.min4.phy --seqtype DNA -m "MFP+ASC" -B 1000
+iqtree --redo -keep-ident -T 5 -s ml_trees/chr_MT_n60.min4.phy.varsites.phy --seqtype DNA -m "MFP+ASC" -B 1000
+
+#create tree, W
+python ~/modules/vcf2phylip.py -i chr_W_n60.vcf.gz -f --output-folder ml_trees
+iqtree --redo -keep-ident -T 5 -s ml_trees/chr_W_n60.min4.phy --seqtype DNA -m "MFP+ASC" -B 1000
+iqtree --redo -keep-ident -T 5 -s ml_trees/chr_W_n60.min4.phy.varsites.phy --seqtype DNA -m "MFP+ASC" -B 1000
+```
+
+And plot:
+
+```bash
+#### Determine egg shift parsimony using binary classifications: female only n = 60!
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/tree_comparison_mtauto/with_cp')
+.libPaths('~/mambaforge/envs/R/lib/R/library')
+library(ape)
+library(caper)
+library(ggtree)
+library(treeio)
+library(phytools)
+library(tidyverse)
+library(viridis)
+library(pheatmap)
+library(ggpubr)
+library(meRo)
+library(data.table)
+library(tangler)
+.libPaths('~/mambaforge/envs/r/lib/R/library')
+library(magick)
+
+# Read in trees and metadata 
+md <- read_tsv('~/merondun/cuculus_host/Metadata_Host.txt') %>% filter(Analysis_PopulationGenetics == 1) %>% drop_na(Egg)
+md$dummy <- 1 # Assign fake dummy var so that all connections are plotted 
+
+### mtDNA tree
+m = read.iqtree('ml_trees/chr_MT_n60.min4.phy.varsites.phy.contree')
+m1 <- root(as.phylo(m),outgroup = '387_CP_MBW_RUS_F')
+mt_tree <- drop.tip(m1,c('387_CP_MBW_RUS_F'))
+
+### W tree
+w = read.iqtree('ml_trees/chr_W_n60.min4.phy.varsites.phy.contree')
+w1 <- root(as.phylo(w),outgroup = '387_CP_MBW_RUS_F')
+w_tree <- drop.tip(w1,c('387_CP_MBW_RUS_F'))
+
+### AUTOSOME tree 
+a = read.iqtree('ml_trees/autos_LD_n60.min4.phy.varsites.phy.contree')
+a1 <- root(as.phylo(a),outgroup = '387_CP_MBW_RUS_F')
+a_tree <- drop.tip(a1,c('387_CP_MBW_RUS_F'))
+
+# Filter md so it has only egg types assessed
+md <- md %>% filter(ID %in% mt_tree$tip.label)
+
+# Store results
+results <- list()
+for (egg in unique(md$Egg)) { 
+  for (tree in c('mt_tree','a_tree','w_tree')) { 
+    
+    cat('Working on egg type: ',egg,' for tree: ',tree,'\n')
+    
+    # Change egg to binary trait, only target egg is 1 all else is 0 
+    md_mod <- md %>% mutate(Egg = ifelse(Egg == egg,egg,'E0'))
+    
+    # Generate base tree 
+    targ_tree <- get(tree)
+    ggt <- ggtree(targ_tree, layout = "circular",branch.length='none') %<+% md_mod
+    
+    #grab only egg
+    phenos <- as.data.frame(ggt$data %>% filter(isTip == TRUE))
+    egg_mat <- as.matrix(phenos %>% select(Egg))
+    phenotypes <- setNames(as.vector(egg_mat[, 1]), targ_tree$tip.label)
+    
+    #inspect tree
+    ggtree(targ_tree, layout = "rectangular",branch.length='none') %<+% md_mod + 
+      geom_tippoint(aes(fill=Egg),pch=21,size=2)+
+      scale_fill_brewer(palette='Set2')
+    
+    #Plot probabilities 
+    t2 <- multi2di(targ_tree)
+    
+    # Quick ape method 
+    fitER <- ape::ace(phenotypes,t2,model="ER",type="discrete")
+    
+    # Determine ancestral state likelihood number of shifts using MCMC
+    sim <- make.simmap(t2, phenotypes, model="ER", nsim=100,Q='mcmc')
+    
+    # Output stats on the number of shifts across the 100 replicates 
+    vec <- data.frame(shifts = countSimmap(sim)$Tr[,1])
+    shifts <- vec %>% mutate(Egg = egg, Tree = tree)
+    
+    results[[paste0(egg,'_',tree)]] <- shifts
+    
+  }
+}
+
+full_results <- rbindlist(results)
+
+write.table(full_results,file='20240905_Results_Binary_EggComparison_Females.txt',quote=F,sep='\t',row.names=F)
+
+# Read in 
+full_results <- read_tsv('20240905_Results_Binary_EggComparison_Females.txt')
+
+# Add egg colors
+md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
+egglevs = md %>% filter(Analysis_Mantel == 1) %>% select(Egg) %>% unique %>% mutate(ord = as.numeric(gsub('E','',Egg))) %>% arrange(ord) %>% mutate(col = viridis(11, option='turbo'))
+full_results$Egg = factor(full_results$Egg,levels=egglevs$Egg)
+#BUT for females, only some eggs analyzed:
+fem_eggs <-  md %>% filter(ID %in% mt_tree$tip.label) %>% select(Egg) %>% arrange(Egg) %>% unique
+retained <- md %>% filter(ID %in% mt_tree$tip.label)
+
+# Each egg / tree has 100 bootstrapps, so add an identifier for each
+fr <- full_results %>% 
+  group_by(Egg, Tree) %>% 
+  mutate(rep = row_number()) 
+
+# And for each bootstrap compare mtDNA vs autosomal shifts 
+mt_vs_aut <- fr %>% 
+  pivot_wider(names_from = Tree,values_from = shifts) %>% 
+  mutate(shifts = w_tree - a_tree) # switch mt_tree with w_tree for w_tree! 
+
+# Calculate summary stats incl. 95% CIs
+confs <- mt_vs_aut %>% group_by(Egg) %>% sum_stats(shifts)
+
+# Boxes 
+plot_mtaut <- mt_vs_aut %>% ungroup %>% 
+  filter(Egg != 'Multiclass') %>% 
+  ggplot(aes(x=Egg,y=shifts,fill=Egg))+
+  geom_hline(yintercept=0,lty=2)+
+  geom_hline(yintercept=c(-1,1),lty=3,col='darkgray')+
+  geom_errorbar(data=confs %>% filter(Egg != 'Multiclass'),width=0.2,col='black',aes(x=Egg,ymin=conf_low,ymax=conf_high),inherit.aes=FALSE,position=position_nudge(x=-0.15))+
+  geom_boxplot(width = .15,outlier.shape = NA, alpha = 0.9,lwd=0.25,position=position_nudge(x=0.15)) +
+  #ggdist::stat_halfeye(width = .3,.width = 0,justification = -.2, point_colour = NA,alpha = 0.95,normalize='groups')+
+  scale_fill_manual(values=egglevs$col,breaks=egglevs$Egg)+
+  scale_color_manual(values=egglevs$col,breaks=egglevs$Egg)+
+  theme_bw()+
+  ylab('')+xlab('')+
+  coord_flip(ylim=c(-15,15))
+plot_mtaut
+
+pdf('../../figures/20240906_W-vs-Autosomal-shifts-MCMC.pdf',height=4,width=4)
+plot_mtaut
+dev.off()
+
+#### Plot tree discordance ####
+# This will also estimate transitions from each egg type to other eggs,  but doesn't seem as reliable as binary above approach
+
+full_tree_results <- list()
+full_egg_results <- list()
+
+for (tree in c('mt_tree','a_tree','w_tree')) {
+  
+  cat('Running full ML reconstruction on tree: ',tree,'\n')
+  
+  # Generate base tree 
+  targ_tree <- get(tree)
+  ggt <- ggtree(targ_tree, layout = "rectangular",branch.length='none') %<+% md 
+  
+  #grab only egg
+  phenos <- as.data.frame(ggt$data %>% filter(isTip == TRUE))
+  egg_mat <- as.matrix(phenos %>% select(Egg))
+  phenotypes <- setNames(as.vector(egg_mat[, 1]), targ_tree$tip.label)
+  
+  #Plot probabilities 
+  t2 <- multi2di(targ_tree)
+  
+  # Quick ape method 
+  fitER <- ape::ace(phenotypes,t2,model="ER",type="discrete")
+  
+  # Determine ancestral state likelihood number of shifts using MCMC
+  simfull <- make.simmap(t2, phenotypes, model="ER", nsim=100,Q='mcmc')
+  
+  # Output stats on the number of shifts across the 100 replicates 
+  vec <- data.frame(shifts = countSimmap(simfull)$Tr[,1])
+  shifts <- vec %>% mutate(Tree = tree, MLloglik = fitER$loglik, MLest = fitER$rates, MLse = fitER$se) 
+  
+  # Extract number straight from the MCMC approach
+  mat <- countSimmap(simfull)$Tr
+  col_names <- colnames(mat)
+  
+  # Calculate average transitions for each Egg
+  calculate_statistics <- function(mat, prefix) {
+    # Identify columns that contain the specific egg prefix
+    relevant_cols <- grep(paste0("^", prefix, ",E|E,", prefix, "$"), col_names, value = TRUE)
+    
+    # Sum the values in these columns
+    total_transitions <- rowSums(mat[, relevant_cols])
+    
+    # Calculate statistics
+    stats <- list(
+      Mean = mean(total_transitions),
+      Median = median(total_transitions),
+      SD = sd(total_transitions)
+    )
+    
+    return(stats)
+  }
+  
+  # Apply to each E group
+  E_groups <- fem_eggs$Egg
+  averages <- sapply(E_groups, function(E) calculate_statistics(mat, E))
+  
+  egg_shifts <- as.data.frame(t(averages)) %>% mutate(Egg = rownames(.), Tree = tree)
+  rownames(egg_shifts) <- NULL
+  
+  full_tree_results[[tree]] <- shifts
+  full_egg_results[[tree]] <- egg_shifts
+  
+  # Extract nodes and the proportions for pies
+  nodes <- data.frame(
+    node=1:t2$Nnode+Ntip(t2),
+    fitER$lik.anc)
+  
+  # For stochastic mapping 
+  obj <- describe.simmap(simfull,plot=FALSE)
+  mcmc_nodes <- as.data.frame(cbind(node=rownames(obj$ace),obj$ace)); rownames(mcmc_nodes) <- NULL
+  mcmc_nodes <- mcmc_nodes %>% mutate(across(starts_with('E'), as.numeric))
+  nodes_plot <- mcmc_nodes %>% filter(node %in% nodes$node)
+  rownames(nodes_plot) <- nodes_plot$node
+  nodes_plot$node <- as.integer(nodes_plot$node)
+  
+  ## cols parameter indicate which columns store stats
+  pies <- nodepie(nodes_plot, cols=2:10,outline.color='black',outline.size = 0.1)
+  pies <- lapply(pies, function(g) g+scale_fill_manual(values = egglevs$col,breaks=egglevs$Egg))
+  
+  t3 <- full_join(t2, data.frame(label = names(phenotypes), stat = phenotypes ), by = 'label')
+  tp <- ggtree(t3,layout='rectangular', branch.length='none') %<+% md
+  tp$data$dummy <- 1
+  tp_final <- tp + geom_inset(pies, width = .09, height = .09)
+  tp_phenos <- tp_final +
+    geom_tippoint(aes(fill=Hap),pch=21,size=1.5,)+
+    scale_fill_manual(values=md$HapCol,breaks=md$Hap)
+  assign(paste0(tree,'_nodes'),tp_final)
+  assign(paste0(tree,'_pies'),tp_phenos)
+}
+
+# Grab the model results
+full_search_res <- rbindlist(full_tree_results)
+full_search_res %>% group_by(Tree,MLloglik,MLest,MLse) %>% sum_stats(shifts)
+
+# Also bind the egg data 
+full_search_eggs <- rbindlist(full_egg_results)
+full_search_eggs
+full_search_eggs$Mean <- unlist(full_search_eggs$Mean)
+full_search_eggs$Median <- unlist(full_search_eggs$Median)
+full_search_eggs$SD <- unlist(full_search_eggs$SD)
+
+# Plot all connections 
+discord <- simple.tanglegram(tree1=mt_tree_pies,tree2=a_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord <- simple.tanglegram(tree1=mt_tree_pies,tree2=w_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord
+
+pdf('../../figures/20240905_TreeCompare-mtDNA-W-NodePiesML.pdf',height=5,width=7)
+discord
+dev.off()
+
+# Swap 
+discord2 <- simple.tanglegram(tree1=w_tree_pies,tree2=mt_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+
+pdf('../../figures/20240905_TreeCompare-W-mtDNA-NodePiesML.pdf',height=5,width=7)
+discord2
+dev.off()
+```
+
+## Randomize W7 Egg Assignments
+
+To ensure that we wouldn't find fixed SNPs by chance in our 'NonBlue Diversification' scenario, let's randomize the populations within the n=14 samples (n=4 E10, n=10 E6) and calculate FST across the randomized n=14, and repeat this 10 times. 
+
+```bash
+#randomize
+awk '{print $2}' W7.popfile > temp2
+
+for i in {1..10}
+do
+    # Shuffle lines in the file
+    awk '{print $1}' W7.popfile | shuf > temp.list
+
+    # Add $p1 to first 5 lines and $p2 to the next 5
+    paste temp.list temp2 > "rf${i}.popfile"
+done
+```
+
+Calculate FST in the randomized groups:
+
+```bash
+#!/bin/bash
+
+#SBATCH --get-user-env
+#SBATCH --mail-user=merondun@bio.lmu.de
+#SBATCH --clusters=biohpc_gen
+#SBATCH --partition=biohpc_gen_normal
+#SBATCH --cpus-per-task=2
+#SBATCH --time=48:00:00
+
+RUN=$1
+
+popdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/randomizing_fst
+vcfdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/female_vcfs
+outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/randomizing_fst
+
+popfile=$popdir/${RUN}.popfile
+p1="E10"
+p2="E6"
+
+mkdir fst fst/work fst/out
+
+# Separate the randomized pops
+grep -w ${p1} ${popfile} > fst/work/${RUN}_${p1}.list
+grep -w ${p2} ${popfile} > fst/work/${RUN}_${p2}.list
+
+
+for CHR in $(cat Chromosomes.list); do
+
+if [[ $CHR = 'chr_W' || $CHR = 'chr_MT' || $CHR = 'chr_Z' ]]; then
+
+        echo "WORKING ON FEMALE HAPLOID"
+        vcftools --haploid --gzvcf ${vcfdir}/${CHR}.FEM.DP3.vcf.gz --out fst/work/${CHR}_${RUN} \
+                --weir-fst-pop fst/work/${RUN}_${p1}.list --weir-fst-pop fst/work/${RUN}_${p2}.list --fst-window-size 1 --max-missing 0.1
+
+else
+
+        echo "WORKING ON FEMALE DIPLOID"
+        vcftools --gzvcf ${vcfdir}/${CHR}.FEM.DP3.vcf.gz --out fst/work/${CHR}_${RUN} \
+                --weir-fst-pop fst/work/${RUN}_${p1}.list --weir-fst-pop fst/work/${RUN}_${p2}.list --fst-window-size 1 --max-missing 0.1
+
+fi
+
+        # Format the output and merge it with the gene and dN / dS data
+        awk -v run=${RUN} '{OFS="\t"}{print $1, $2, $2, run, $5}' fst/work/${CHR}_${RUN}.windowed.weir.fst | \
+                sed '1d' | bedtools intersect -a - -b Gene_Lookup.bed -wao  | \
+                bedtools intersect -a - -b ${vcfdir}/Annotated_Variants_2024APR2.bed -wao | \
+                awk '{OFS="\t"}{print $1, $2, $4, $5,$10,$15,$16}' | \
+                sed 's/ID=//g' | sed 's/gene-//g' > fst/out/${CHR}_${RUN}.fst.txt
+
+        # Subset fixed snps
+        awk '$5 == 1' fst/out/${CHR}_${RUN}.fst.txt > fst/out/${CHR}_${RUN}.fst1.txt
+
+done
+```
+
+Since we have the same samples in every comparison, and hence the same number of assayed SNPs across all samples, and we want to calculate the proportion of fixed SNPs, we can just output the number of SNPs for each chromosome and avoid importing the entire BP fst data:
+
+```bash
+fstdat=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/randomizing_fst/fst/out
+
+mkdir -p counts
+
+for CHR in $(cat Chromosomes.list); do 
+
+    cat $fstdat/${CHR}_rf10.fst.txt | wc -l | awk -v chr=${CHR} '{print $0, chr}' > counts/${CHR}_rf10.fst.count.txt
+
+done
+
+```
+
+And plot:
+
+```R
+#### Calculate proportion of Z/W/mt/A fixed SNPs across randomized FST pops 
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/randomizing_fst')
+.libPaths('~/mambaforge/envs/r/lib/R/library')
+library(tidyverse)
+library(viridis)
+library(ggpubr)
+library(meRo)
+library(RColorBrewer)
+library(zoo)
+library(ggpubr)
+library(scales)
+library(data.table)
+
+##### Load and prep FST BP data  ######
+tidy_bp = read_tsv('~/merondun/cuculus_host/gene_hunt/randomized_fst/Fixed_SNPs_RandomizedEggs.txt',col_names = F)
+names(tidy_bp) = c('chr','start','iteration','FST','intgene','effect','gene')
+
+#Assign AvZ
+tidy_bp = tidy_bp %>% 
+  mutate(
+    chr = gsub('chr_','',chr),
+    chr = gsub('scaffold.*','scaffolds',chr),
+    AvZ = case_when(
+      chr == 'W' ~ 'W',
+      chr == 'Z' ~ 'Z',
+      chr == 'MT' ~ 'MT',
+      TRUE ~ 'Autosome'),
+    #add floor and ceiling to FST between 0 - 1
+    FST = pmax(0, pmin(1, FST)),
+    site = paste0(chr,'_',start)
+  ) 
+
+##### Proportions of FST=1 SNPs #####
+tidy_counts <- tidy_bp %>% ungroup %>% 
+  # First count fixed SNPs by chromosome 
+  group_by(iteration,AvZ) %>%
+  summarize(n = n()) %>% ungroup %>%
+  # Ensure all combinations of iteration and AvZ exist
+  complete(iteration, AvZ, fill = list(n = 0))
+
+# Import the SNP counts per chromosome
+counts <- read.table('~/merondun/cuculus_host/gene_hunt/randomized_fst/Total_SNP_Counts.txt',header=F,sep=' ')
+names(counts) <- c('SNPs','chr')
+counts <- counts %>% 
+  mutate(
+    chr = gsub('chr_','',chr),
+    chr = gsub('scaffold.*','scaffolds',chr),
+    AvZ = case_when(
+      chr == 'W' ~ 'W',
+      chr == 'Z' ~ 'Z',
+      chr == 'MT' ~ 'MT',
+      TRUE ~ 'Autosome'))
+counts_avz <- counts %>% group_by(AvZ) %>% summarize(SNPs = sum(SNPs))
+
+# Merge counts with totals
+tidy_prop <- left_join(tidy_counts,counts_avz) %>% 
+  mutate(Proportion = n / SNPs,
+         Replicate = ifelse(iteration == 'rf0','True','Randomized'))
+tidy_prop$AvZ = factor(tidy_prop$AvZ,levels=c('Autosome','Z','W','MT'))
+
+#plot, divide into top and bottom plots for visualization 
+props = tidy_prop %>% ggplot(aes(y=iteration,x=Proportion,fill=Replicate,label=n))+
+  geom_bar(stat='identity',position=position_dodge(width=0.9))+
+  geom_text(position=position_dodge(width=0.9),hjust=-.25,size=1.5)+
+  scale_fill_manual(values=rev(brewer.pal(3,'Set2')))+
+  #coord_cartesian(xlim=c(0,1.0))+
+  scale_x_continuous(n.breaks = 4)+
+  facet_wrap(AvZ~.,scales='free')+
+  theme_bw(base_size=6)+xlab('Proportion of FST = 1.0 SNPs Present in At Least 1 Comparison')+ylab('')+
+  theme(legend.position = "top", # Moves legend to bottom
+        legend.text = element_text(size = 6), # Adjusts text size
+        legend.title = element_text(size = 6)) + # Adjusts title size
+  guides(fill = guide_legend(nrow = 1, byrow = TRUE, override.aes = list(size = 1)))
+props
+
+pdf('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/figures/20240907_FST-BP_Females_Proportions-Randomized.pdf',height=4,width=6)
+props
+dev.off()
+
+```
+
 

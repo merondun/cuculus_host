@@ -21,6 +21,9 @@ Assay these species and sexes for the presence of NDUFAF4, and then create a phy
 | Piaya cayana            | Female | Illumina | SRR9947006                           |
 
 1... : Subsampling reads to 10GB and aligning them to the whole genome cuckoo reference
+
 2: Extract consensus sequence over the chr3 and W chromosome copy
+
 3: Align the nucleotide sequences, filter for gaps, and create a tree
+
 4: Plot
