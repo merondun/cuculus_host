@@ -5697,7 +5697,7 @@ full_results <- read_tsv('20240905_Results_Binary_EggComparison_Females.txt')
 
 # Add egg colors
 md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
-egglevs = md %>% filter(Analysis_Mantel == 1) %>% select(Egg) %>% unique %>% mutate(ord = as.numeric(gsub('E','',Egg))) %>% arrange(ord) %>% mutate(col = viridis(11, option='turbo'))
+egglevs = md %>% filter(Analysis_PopulationGenetics == 1) %>% select(Egg) %>% na.omit %>% unique %>% mutate(ord = as.numeric(gsub('E','',Egg))) %>% arrange(ord) %>% mutate(col = viridis(11, option='turbo'))
 full_results$Egg = factor(full_results$Egg,levels=egglevs$Egg)
 #BUT for females, only some eggs analyzed:
 fem_eggs <-  md %>% filter(ID %in% mt_tree$tip.label) %>% select(Egg) %>% arrange(Egg) %>% unique
@@ -5839,21 +5839,26 @@ full_search_eggs$Mean <- unlist(full_search_eggs$Mean)
 full_search_eggs$Median <- unlist(full_search_eggs$Median)
 full_search_eggs$SD <- unlist(full_search_eggs$SD)
 
-# Plot all connections 
-discord <- simple.tanglegram(tree1=mt_tree_pies,tree2=a_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
-discord <- simple.tanglegram(tree1=mt_tree_pies,tree2=w_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
-discord
+# Instead of hap colors for tips, do egg! 
+### EGG! ### 
+w_egg <- w_tree_nodes +
+  geom_tippoint(aes(fill=Egg),pch=22,size=1.5)+
+  scale_fill_manual(values=egglevs$col,breaks=egglevs$Egg)
+a_egg <- a_tree_nodes +
+  geom_tippoint(aes(fill=Egg),pch=22,size=1.5)+
+  scale_fill_manual(values=egglevs$col,breaks=egglevs$Egg)
+discord_egg <- simple.tanglegram(tree1=w_egg,tree2=a_egg,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
+discord_egg2 <- simple.tanglegram(tree1=a_egg,tree2=w_egg,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
 
-pdf('../../figures/20240905_TreeCompare-mtDNA-W-NodePiesML.pdf',height=5,width=7)
-discord
+
+pdf('../../figures/20240909_TreeCompare-W-Auto-NodePiesML-EGG.pdf',height=5,width=7)
+discord_egg
 dev.off()
 
-# Swap 
-discord2 <- simple.tanglegram(tree1=w_tree_pies,tree2=mt_tree_pies,column=dummy,value=1,t2_pad=2,l_color='black',tiplab=F)
-
-pdf('../../figures/20240905_TreeCompare-W-mtDNA-NodePiesML.pdf',height=5,width=7)
-discord2
+pdf('../../figures/20240909_TreeCompare-Auto-W-NodePiesML-EGG.pdf',height=5,width=7)
+discord_egg2
 dev.off()
+
 ```
 
 ## Randomize W7 Egg Assignments
