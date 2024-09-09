@@ -11,3 +11,10 @@ The scripts in order:
 7. Create covariates file for GWAS from population structure
 8. Run GWAS using GEMMA
 9. Identify candidates and plot GWAS. 
+
+The large .txt.gz file provides the fixed SNPs across contrasts for females, and is referred to as "FST1_TIDY_2024APR4.txt" in the scripts. 
+
+
+The female samples (n=47) which include nestlings with an observed egg phenotype, requiring at least 4 females for the analysis. 
+
+![spatial distribution](Contrasts_Haplotype-Females_SpatialDistribution_2024APR4.png)
