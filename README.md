@@ -1,5 +1,7 @@
 # Evolutionary Genomics of Host Specialization in Cuckoos
 
+Perpetual Zenodo archive: [![DOI](https://zenodo.org/badge/615996419.svg)](https://doi.org/10.5281/zenodo.13932315)
+
 This project aims to investigate the evolutionary genomics underlying host specialization in common cuckoos. 
 
 ## Project Structure
