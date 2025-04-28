@@ -1,6 +1,6 @@
 # Evolutionary Genomics of Host Specialization in Cuckoos
 
-Perpetual Zenodo archive: [![DOI](https://zenodo.org/badge/615996419.svg)](https://doi.org/10.5281/zenodo.13932315)
+Perpetual Zenodo archive: [![DOI](https://zenodo.org/badge/615996419.svg)](https://doi.org/10.5281/zenodo.13932314)
 
 **Strongly recommended to either read the `.html` file for code, or open the `.md` in a markdown editor.**
 
