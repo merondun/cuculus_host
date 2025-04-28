@@ -2,7 +2,7 @@
 
 Perpetual Zenodo archive: [![DOI](https://zenodo.org/badge/615996419.svg)](https://doi.org/10.5281/zenodo.13932315)
 
-** Strongly recommended to either read the `.html` file for code, or open the `.md` in a markdown editor.**
+**Strongly recommended to either read the `.html` file for code, or open the `.md` in a markdown editor.**
 
 This project aims to investigate the evolutionary genomics underlying host specialization in common and oriental cuckoos. 
 
