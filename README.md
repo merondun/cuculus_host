@@ -2,7 +2,9 @@
 
 Perpetual Zenodo archive: [![DOI](https://zenodo.org/badge/615996419.svg)](https://doi.org/10.5281/zenodo.13932315)
 
-This project aims to investigate the evolutionary genomics underlying host specialization in common cuckoos. 
+** Strongly recommended to either read the `.html` file for code, or open the `.md` in a markdown editor.**
+
+This project aims to investigate the evolutionary genomics underlying host specialization in common and oriental cuckoos. 
 
 ## Project Structure
 
@@ -22,4 +24,4 @@ The repository is organized as follows:
 
 ## Contact
 
-For any questions or concerns, please open an issue on this repository or reach out to me (Justin Merondun): heritabilities@gmail.com
+For any questions or concerns, please open an issue on this repository or reach out to me (Justin Merondun): heritabilities [@] gmail.com

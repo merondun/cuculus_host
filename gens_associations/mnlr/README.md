@@ -9,10 +9,3 @@ Create a MNLR with egg or host or habitat as the response variable and Geography
 * Repeat the above procedure 100 times so that different downsampled observations are included 
 * Determine which classes are predicted correctly (% correct) from the confusion matrix on real / predicted responses across bootstraps
 
-Files:
-
-`Model_Selection_Boot-2Obs_2024AUG06.txt`: Model selection outputs for different covariates.
-
-`ConfusionMatrix_Boot-2Obs_2024AUG06.txt`: Reference and predictions (e.g. confusion matrix) from model outputs. 
-
-Files with `NoW1W2W3` are the same as above, except excluding the ancient blue egg W1/W2/W3 haplogroup split. 
