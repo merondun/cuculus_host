@@ -2,7 +2,8 @@
 
 Two primary strategies here:
 
-* Estimate background FST in 10KB windows for each egg type (FSTobs - max(FST[randomized pops n=10])) using a target egg vs all other eggs approach. 
+* Estimate background FST in 10KB windows for each egg type with more than 4 females (FSTobs - max(FST[randomized pops n=10])) using a target egg vs all other eggs approach. 
+  * Replicate the above, except using a relaxed threshold of at least 3 females per egg for target eggs, and only using nestlings for C. optatus. 
 * Estimate base-pair level FST in C. canorus to get blue egg and reverted egg mutations. 
 
 ## Preparation
@@ -13,7 +14,7 @@ Two primary strategies here:
 # Egg gene scan, sample selection 
 #### Find associations between MT/W haplotypes and features 
 setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4')
-.libPaths('~/mambaforge/envs/r/lib/R/library')
+.libPaths('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/software/mambaforge/envs/r25/lib/R/library')
 library(tidyverse)
 library(viridis)
 library(tidyverse)
@@ -23,7 +24,7 @@ library(ggspatial)
 md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt') 
 md = md %>% drop_na(Egg) %>% filter(Sex == 'F' & Analysis_PopulationGenetics == 1 & Egg != 'NA')
 md %>% count(Egg)
-keep = md %>% count(Egg) %>% filter(n >= 4)
+#keep = md %>% count(Egg) %>% filter(n >= 4)
 mds = md %>% filter(Egg %in% keep$Egg)
 mds %>% count(Egg)
 
@@ -47,7 +48,7 @@ write.table(pairwise_combinations_df,file='Pairwise_Contrasts-WithinSp.list',quo
 
 # Plot the individuals
 #jitter points up to 1 lat/long for viewing
-mds = mds %>% mutate(LatJit = jitter(Latitude,amount =2),
+mds = md %>% mutate(LatJit = jitter(Latitude,amount =2),
                      LonJit = jitter(Longitude,amount=2))
 sites = st_as_sf(mds, coords = c("LonJit", "LatJit"), 
                  crs = 4326, agr = "constant")
@@ -55,32 +56,28 @@ sites = st_as_sf(mds, coords = c("LonJit", "LatJit"),
 #set up map and convert df to coordinate frame
 world = map_data("world")
 
-
 imm_spat = ggplot() +
   geom_polygon(data = world, aes(x = long, y = lat, group = group), col='grey90', fill='white') +
   geom_sf(data = sites, 
-          aes(fill=Egg,shape=SpeciesShort),
+          aes(fill=Egg,shape=Egg),
           size=3,show.legend = T) +
   xlab('')+ylab('')+
   coord_sf(xlim = c(min(mds$Longitude)-5, max(mds$Longitude)+5), 
            ylim = c(min(mds$Latitude)-5, max(mds$Latitude)+5), expand = FALSE)+
   scale_fill_manual(values=mds$EggCol,breaks=mds$Egg)+
-  scale_shape_manual(values=mds$Shape,breaks=mds$SpeciesShort)+
+  scale_shape_manual(values=mds$EggShape,breaks=mds$Egg)+
   theme_classic()+
   facet_grid(SpeciesShort ~.)+
   theme(panel.border = element_rect(colour = "black", fill=NA, size=1),panel.background = element_rect(fill = "aliceblue"))+
   theme(legend.text = element_text(size = 6),legend.title = element_text(size = 6),legend.key.size = unit(0.1, 'cm'))+
-  annotation_scale(line_width=0.5)+
-  guides(fill=guide_legend(nrow=6,override.aes=list(shape=21)))
+  annotation_scale(line_width=0.5)
 imm_spat
 
-ggsave('~/symlinks/host/figures/20250404_EggHunt_Spatial.pdf',imm_spat,
+ggsave('~/symlinks/host/figures/20250801_EggHunt_Spatial-Females-AllvONE.pdf',imm_spat,
        dpi=300,height=6,width=8)
-
-
 ```
 
-
+Targets (using conspecifics n=60 canorus and n=27 optatus as contrast for all FST analsyes).
 
 ```bash
   Egg       n
@@ -106,13 +103,12 @@ ggsave('~/symlinks/host/figures/20250404_EggHunt_Spatial.pdf',imm_spat,
 #SBATCH --time=48:00:00
 
 # mamba activate snps
-# for CHR in $(cat Chromosomes.list); do sbatch -J Filter_${CHR} 2.Refilter_VCF.sh ${CHR}; done
+# for CHR in $(cat Chromosomes.list); do sbatch -J Filter_${CHR} 00_Refilter_VCF.sh ${CHR}; done
 CHR=$1
 
 # Modify WD depending on canorus or optatus
-WD=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/gwas_n3/both/females_only
+WD=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/femalesN4_vs_all
 raw_vcfs=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/merged/snps_only/
-mask=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/Coverage_Masks/GCA_017976375.1_bCucCan1.pri_genomic.CHR.N75-DoubleCoverage.mask.bed
 
 cd $WD
 
@@ -125,7 +121,7 @@ if [[ $CHR = 'chr_W' || $CHR = 'chr_MT' ]]; then
         PLOIDY=1
 
         echo "FILTERING AND MERGING VARIANT SITES FOR ${CHR}, PLOIDY: ${PLOIDY}"
-        bcftools view --threads 5 --samples-file Females.list --force-samples -Ou ${raw_vcfs}/${CHR}.SNPS.vcf.gz | \
+        bcftools view --threads 5 --samples-file AllEggs.list --force-samples -Ou ${raw_vcfs}/${CHR}.SNPS.vcf.gz | \
                 bcftools view --types snps --min-alleles 2 --max-alleles 2 --threads 5 | \
                 #remove SNPs in bad coverage regions
                 bedtools subtract -header -a - -b ${mask} | \
@@ -146,7 +142,7 @@ else
         PLOIDY=2
 
         echo "FILTERING AND MERGING VARIANT SITES FOR ${CHR}, PLOIDY: ${PLOIDY}"
-        bcftools view --threads 5 --samples-file Females.list -Ou ${raw_vcfs}/${CHR}.SNPS.vcf.gz | \
+        bcftools view --threads 5 --samples-file AllEggs.list -Ou ${raw_vcfs}/${CHR}.SNPS.vcf.gz | \
                 bcftools view --types snps --min-alleles 2 --max-alleles 2 --threads 5 | \
                 #set genotypes below MINDP to missing
                 bcftools +setGT -- -t q -i "FMT/DP < ${MINDP}" -n "./." | \
@@ -158,9 +154,9 @@ else
 fi
 ```
 
-
-
 ### Annotate SNPS
+
+This will annotate SNPs with synonymous/nonsynonymous using genome GFF. 
 
 ```R
 #!/usr/bin/env rscript
@@ -226,93 +222,47 @@ rm raw_dnds/tmp.${CHR}
 
 ```
 
+## bFST: 10-KB One v All [Fig 3]
 
-
-### Merge autosomal VCFS
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=5
-#SBATCH --time=48:00:00
-
-# mamba activate snps
-GROUP=$1
-
-mkdir -p sweeps
-
-bcftools view --threads 10 --samples-file pops/${GROUP}.list autosomal_files/autos.vcf.gz | \
-        bcftools view --threads 10 --min-alleles 2 --max-alleles 2 --types snps -e 'F_MISSING > 0.1' --min-af 0.05 --max-af 0.95 -Ov -o autosomal_files/AllChromosomes2N.${GROUP}.vcf
-bcftools index --threads 10 autosomal_files/AllChromosomes2N.${GROUP}.vcf
-
-cd sweeps
-
-#run raised, -M = missingness, impute per SNP
-~/modules/RAiSD/raisd-master/RAiSD -n ${GROUP} -I ../autosomal_files/AllChromosomes2N.${GROUP}.vcf -A 0.995 -M 1 -y 2 -P -f
-
-mkdir -p pop_vcfs 
-# And also subset each for xp-EHH vcfs 
-for CHR in $(cat Chromosomes.list); do 
-        bcftools view --threads 5 --samples-file pops/${GROUP}.list vcfs/${CHR}.SNP.DP3.vcf.gz | \
-                bcftools view --threads 5 --min-alleles 2 --max-alleles 2 --types snps -e 'F_MISSING > 0.1' --min-af 0.05 --max-af 0.95 -Oz -o pop_vcfs/${CHR}.${GROUP}.vcf.gz
-        bcftools index --threads 5 pop_vcfs/${CHR}.${GROUP}.vcf.gz
-        
-        java -Xmx16g -jar ~/modules/beagle.28Jun21.220.jar gt=pop_vcfs/${CHR}.${GROUP}.vcf.gz out=pop_vcfs/${CHR}.${GROUP}.phased nthreads=5 impute=false
-    bcftools index --threads 5 pop_vcfs/${CHR}.${GROUP}.phased.vcf.gz
-    
-done 
-```
-
-Also run on Z separately:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=5
-#SBATCH --time=48:00:00
-
-# mamba activate snps
-GROUP=$1
-
-mkdir -p sweeps
-
-bcftools view --threads 10 --samples-file pops/${GROUP}.list vcfs/chr_Z.SNP.DP3.vcf.gz | \
-        bcftools view --threads 10 --min-alleles 2 --max-alleles 2 --types snps -e 'F_MISSING > 0.1' --min-af 0.05 --max-af 0.95 -Ov -o autosomal_files/Zchr.${GROUP}.vcf
-bcftools index --threads 10 autosomal_files/Zchr.${GROUP}.vcf
-
-```
-
-## bFST: 10-KB Windows [Fig 3]
-
-Estimate background FST in 10-KB windows. 
+Estimate background FST in 10-KB windows (100-bp for mtDNA). 
 
 For each egg type, e.g. ECC1: 
 
-* Identify number of samples for ECC1 and background
+* Identify number of samples for ECC1 and background (all canorus females) 
 * Run 10 replicates: swap the population labels so that there are N=ECC1 samples randomly assigned ECC1
 * Estimate FST in 10KB windows for the real comparison (FSTobs) and the n=10 random replicates
 * bFST = FSTobs - maximum value observed in the 10 random replicates 
 
+Subset:
+
+```R
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4')
+.libPaths('~/symlinks/cuck00/software/mambaforge/envs/r25/lib/R/library')
+library(tidyverse)
+
+md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt') 
+md = md %>% drop_na(Egg) %>% filter(Sex == 'F' & Analysis_PopulationGenetics == 1 & Egg != 'NA')
+md %>% count(Egg)
+write.table(md$ID,file = 'femalesN4_vs_all/AllEggs.list',quote=F,sep='\t',row.names=F,col.names=F)
+write.table(md %>% select(ID,Egg),file = 'femalesN4_vs_all/AllEggs.pop',quote=F,sep='\t',row.names=F,col.names=F)
+```
+
+#### Estimate FST
+
 ```bash
 #!/bin/bash
 
 #SBATCH --get-user-env
 #SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=3
-#SBATCH --time=48:00:00
+#SBATCH --clusters=serial
+#SBATCH --partition=serial_std
+#SBATCH --mem=15000mb
+#SBATCH --cpus-per-task=2
+#SBATCH --time=1-00:00:00
 
-#mamba activate R
-# for egg in $(cat Egg_Types.list); do sbatch -J FST_${egg} FST-Background.sh ${egg}; done
+
+#mamba activate r25
+# cat Egg_Types.list | xargs -I {} sbatch -J FST_{} 01_bFST.sh {}
 
 if [ -z "$1" ]; then
     echo "Error: provide population ID"
@@ -322,7 +272,6 @@ fi
 mkdir -p bgfst/work bgfst/out
 
 TARGET=$1
-WIN_SIZE=10000
 
 if [[ $TARGET =~ ^ECO ]]; then
     SPECIES="CO"
@@ -342,8 +291,14 @@ for CHR in $(cat Chromosomes.list); do
     echo -e "\e[42m~~~~ WORKING ON ${TARGET} AND ${CHR} ~~~~\e[0m"
 
     if [[ $CHR = 'chr_W' || $CHR = 'chr_MT' ]]; then
+    
+        if [[ $CHR = 'chr_MT' ]]; then
+            WIN_SIZE=100
+        else
+        	WIN_SIZE=10000
+        fi
 
-        echo "WORKING ON HAPLOID: True comparison"
+        echo "WORKING ON HAPLOID: True comparison, win size ${WIN_SIZE}"
         vcftools --haploid --gzvcf vcfs/${CHR}.SNP.DP3.vcf.gz --out bgfst/work/${CHR}_${TARGET}_TRUE \
             --weir-fst-pop bgfst/work/${TARGET}.TRUE-T.list --weir-fst-pop bgfst/work/${TARGET}.TRUE-F.list --fst-window-size ${WIN_SIZE} --max-missing 0.1 2> bgfst/work/${CHR}_${TARGET}.T.log
         awk -v e=${TARGET} '{OFS="\t"}{print $1, $2, $3, $5, e, "T", "T"}' bgfst/work/${CHR}_${TARGET}_TRUE.windowed.weir.fst | sed '1d' > bgfst/work/${CHR}_${TARGET}_TRUE.out
@@ -365,6 +320,7 @@ for CHR in $(cat Chromosomes.list); do
 
     else
 
+		WIN_SIZE=10000
         echo "WORKING ON DIPLOID: True comparison"
         vcftools --gzvcf vcfs/${CHR}.SNP.DP3.vcf.gz --out bgfst/work/${CHR}_${TARGET}_TRUE \
             --weir-fst-pop bgfst/work/${TARGET}.TRUE-T.list --weir-fst-pop bgfst/work/${TARGET}.TRUE-F.list --fst-window-size ${WIN_SIZE} --max-missing 0.1 2> bgfst/work/${CHR}_${TARGET}.T.log
@@ -390,13 +346,13 @@ done
 
 ```
 
-Have this script accessible `FSTBackgroundCalculations.R`: 
+Ensure this script is available which calculates bFST (FSTobs - max(FSTrandomized)):
 
-```bash
+```R
 #!/usr/bin/env rscript
 args <- commandArgs(trailingOnly = TRUE)
 
-setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/bgfst/work')
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/femalesN4_vs_all/bgfst/work')
 library(dplyr)
 library(meRo)
 
@@ -424,26 +380,31 @@ write.table(dtf,file=paste0('../out/',chr,'_',egg,'.RESULTS.txt'),quote=F,sep='\
 
 ```
 
-#### Plot bFST: Windows
+#### Plot
 
-```bash
-#### Plot 10KB FST Gene Scan with Sweeps
-setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4')
-.libPaths('~/mambaforge/envs/r/lib/R/library')
-library(tidyverse)
-library(viridis)
-library(ggpubr)
-library(meRo)
-library(RColorBrewer)
-library(zoo)
+This will:
+
+* Examine saturation of chromosome class across eggs
+* Plot genome scan
+* Extract and plot candidate regions 
+
+```R
+#### Plot 10KB FST Gene Scan
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/femalesN4_vs_all')
+.libPaths('~/r_libs')
+library(karyoploteR)
 library(ggpubr)
 library(scales)
+library(tidyverse)
+library(viridis)
+library(RColorBrewer)
+library(zoo)
 library(data.table)
 
 md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt')
 
 ##### Load and prep FST   ######
-tidy_bp = fread('20250325_bFST.txt.gz')
+tidy_bp = fread('20250731_bFST.txt.gz')
 names(tidy_bp) = c('chr','start','end','Egg','FST','lo','hi','max','mean','sd','zfst')
 setDT(tidy_bp)
 tidy_bp <- tidy_bp %>% select(-lo,-hi,-mean,-zfst,-sd)
@@ -460,7 +421,7 @@ tidy_bp <- tidy_bp %>% mutate(FST = pmax(0,pmin(1,FST)),
                               bFST = pmax(0,pmin(1,FST-max)),
                               Species = ifelse(grepl('ECC',Egg,),'CC','CO')) %>% 
   ungroup %>% 
-  group_by(chr,start,Species) %>% 
+  group_by(chr,start,Species) %>%  
   mutate(second_highest_bFST = nth(sort(bFST, decreasing = TRUE), 2, default = NA_real_),
          dbFST = pmax(0, bFST - second_highest_bFST)) %>% 
   ungroup 
@@ -468,34 +429,35 @@ tidy_bp <- tidy_bp %>% mutate(FST = pmax(0,pmin(1,FST)),
 tidy_bp %>% filter(chr == 'MT') %>% arrange(start)
 
 # Formatting
-eggcols <- md %>% arrange(EggOrder) %>% select(Egg,EggCol) %>% unique %>% filter(Egg %in% unique(tidy_bp$Egg))
+eggcols <- md %>% arrange(EggOrder) %>% select(Egg,EggCol) %>% na.omit %>% unique %>% filter(Egg %in% unique(tidy_bp$Egg))
 tidy_bp$Egg <- factor(tidy_bp$Egg, levels=eggcols$Egg)
 tidy_bp$AvZ <- factor(tidy_bp$AvZ,levels=c('Autosome','Z','MT','W'))
 
-# Summaries
-tidy_bp %>% 
-  pivot_longer(c(bFST,dbFST)) %>% 
-  group_by(Egg,AvZ,name) %>% 
-  sum_stats(value) %>% 
-  ggplot(aes(y=Egg,x=mean,xmin=conf_low,xmax=conf_high,col=AvZ))+
-  geom_point(position=position_dodge(width=0.5))+
-  geom_errorbar(width=0.5,position=position_dodge(width=0.5))+
-  theme_classic()+
-  facet_wrap(name~.,scales='free')
 
-wins <- tidy_bp %>% 
+###### WINDOW SATURATION ######
+# calculate top 1% observed... and then see which windows fall above that 
+thresh <- tidy_bp %>% 
+  group_by(AvZ) %>% 
+  summarize(threshold = quantile(bFST, 0.999, na.rm = TRUE))
+td <- left_join(tidy_bp,thresh) 
+
+lab <- thresh %>% ungroup  %>% 
+  mutate(lab = paste0(AvZ,': ',round(threshold,2))) %>% 
+  summarize(comb = paste0(lab,collapse='\n'),AvZ='W',Egg='ECC1')
+
+wins <- td %>% 
   group_by(Egg) %>% 
-  filter(bFST >= quantile(bFST, 0.999,na.rm=TRUE)) %>% 
+  filter(bFST >= threshold) %>% 
   count(Egg,AvZ) %>% 
   ungroup() %>% 
   complete(Egg, AvZ, fill = list(n = 0)) %>% 
   ggplot(aes(x = Egg, fill = AvZ, y=n, label = n)) +
   geom_bar(col='black',stat = "identity", aes(y = n), position = position_dodge(width = 0.9)) + 
-  geom_text(position = position_dodge(width = 0.9),size=3,vjust=-.25)+
+  geom_text(position = position_dodge(width = 0.9),size=2.75,vjust=-.25)+
   scale_fill_manual(values = viridis(4,option='mako')) +
-  #facet_grid(AvZ~.,scales='free')+
-  theme_bw(base_size = 8) +
-  coord_cartesian(ylim=c(0,150))+
+  theme_bw(base_size = 10) +
+  geom_text(data=lab,aes(x=Egg,y=Inf,label=lab$comb),vjust=1,size=2)+
+  coord_cartesian(ylim=c(0,450))+
   ylab('') +
   xlab('') +
   theme(legend.position = "right", 
@@ -503,11 +465,123 @@ wins <- tidy_bp %>%
         legend.title = element_text(size = 6)) + 
   guides(fill = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 1)))
 wins
-ggsave('~/symlinks/host/figures/20250401_bFSTWindowDistributions_AvZ.pdf',
-       wins,height=1.25,width=7.5,dpi=300)
+ggsave('~/symlinks/host/figures/20250731_bFSTWindowDistributions-AvZ-Thresholds999-AllvsONE.pdf',
+       wins,height=1.5,width=7.5,dpi=300)
 
-##### Plot GWAS #####
-library(karyoploteR)
+# Alternative: Permutation tests
+set.seed(123)  
+n_perm <- 1000
+
+### Permutation: within AvZ levels, is there excess of one egg?
+permdat <- list()
+for (species in c('CC','CO')) { 
+  
+  cat('Working on: ',species,'\n')
+  sp_bp <- tidy_bp %>% filter(Species == species)
+  obs <- sp_bp %>%
+    group_by(Egg) %>%
+    mutate(thresh = quantile(bFST, 0.999, na.rm = TRUE)) %>%
+    ungroup() %>%
+    mutate(is_outlier = bFST >= thresh) %>%
+    group_by(AvZ, Egg) %>%
+    summarise(observed = sum(is_outlier), .groups = "drop")
+  
+  ### Across species 
+  perm_res <- map_dfr(1:n_perm, function(i) {
+    sp_bp %>%
+      group_by(Egg) %>%
+      mutate(thresh = quantile(bFST, 0.999, na.rm = TRUE)) %>%
+      ungroup() %>%
+      mutate(is_outlier = bFST >= thresh) %>%
+      group_by(AvZ) %>%
+      mutate(Egg_perm = sample(Egg)) %>%
+      group_by(AvZ, Egg_perm) %>%
+      summarise(n_perm = sum(is_outlier), .groups = "drop") %>%
+      rename(Egg = Egg_perm) %>%
+      mutate(iter = i)
+  })
+  
+  # calculate empirical p-values: is each egg enriched for outliers within each AvZ?
+  perm_summary <- perm_res %>%
+    group_by(AvZ, Egg) %>%
+    summarise(
+      mean_perm = mean(n_perm),
+      .groups = "drop"
+    ) %>%
+    left_join(obs, by = c("AvZ", "Egg")) %>%
+    rowwise() %>%
+    mutate(
+      p_empirical = mean(
+        abs(perm_res$n_perm[perm_res$AvZ == AvZ & perm_res$Egg == Egg] - mean_perm) >= abs(observed - mean_perm)
+      )
+    ) %>%
+    ungroup()
+  
+  perm_avz <- perm_summary %>%
+    mutate(
+      enrichment = observed / mean_perm,
+      sig_label = if_else(p_empirical < 0.05, "*", ""),
+      Species = species
+    )
+  
+  permdat[[species]] <- perm_avz
+}
+
+# Bind 
+perms <- rbindlist(permdat) %>% as_tibble
+
+# merge observed and permuted
+pe <- perms %>% 
+  ggplot(aes(x = Egg, y = enrichment, fill = AvZ)) +
+  geom_col(position = position_dodge(width = 0.8), color = "black") +
+  geom_text(aes(label = sig_label),position = position_dodge(width = 0.8),vjust = -0.5,size = 4) +
+  coord_cartesian(ylim=c(0,max(perm_avz$enrichment)*1.1))+geom_hline(yintercept=1,lty=2)+
+  scale_fill_viridis_d(option = "mako") +
+  theme_bw(base_size = 10) +
+  ylab('')+xlab('') 
+pe
+ggsave('~/symlinks/host/figures/20250807_bFSTPermutations-ByEggBySpecies-999_AvZ-AllvONE.pdf',
+       pe,height=1.5,width=7.5,dpi=300)
+
+# Third Alternative: lowest observed in top 0.1% by species 
+outlier_low <- tidy_bp %>% 
+  group_by(Species,AvZ) %>% 
+  filter(bFST >= quantile(bFST, 0.999, na.rm = TRUE)) %>% 
+  summarize(threshold = min(bFST))
+tdo <- left_join(tidy_bp,outlier_low) 
+
+lab <- outlier_low %>% ungroup  %>% 
+  mutate(lab = paste0(AvZ,': ',round(threshold,2))) %>% 
+  group_by(Species) %>% 
+  summarize(comb = paste0(lab,collapse='\n'),AvZ='W') %>% 
+  mutate(Egg = c('ECC1','ECO1'))
+lab
+lowin <- tdo %>% 
+  group_by(Egg) %>% 
+  filter(bFST >= threshold) %>% 
+  count(Egg,AvZ) %>% 
+  ungroup() %>% 
+  complete(Egg, AvZ, fill = list(n = 0)) %>% 
+  ggplot(aes(x = Egg, fill = AvZ, y=n, label = n)) +
+  geom_bar(col='black',stat = "identity", aes(y = n), position = position_dodge(width = 0.9)) + 
+  geom_text(position = position_dodge(width = 0.9),size=3,vjust=-.25)+
+  scale_fill_manual(values = viridis(4,option='mako')) +
+  geom_text(data=lab,aes(x=Egg,y=Inf,label=lab$comb),vjust=2,size=2)+
+  theme_bw(base_size = 10) +
+  coord_cartesian(ylim=c(0,325))+
+  ylab('') +
+  xlab('') +
+  theme(legend.position = "right", 
+        legend.text = element_text(size = 6), 
+        legend.title = element_text(size = 6)) + 
+  guides(fill = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 1)))
+lowin
+ggsave('~/symlinks/host/figures/20250731_bFSTWindowDistributions-OutliersLowestFST-AvZ-Thresholds999-AllvONE.pdf',
+       lowin,height=1.5,width=7.5,dpi=300)
+
+
+###### GWAS #######
+
 #prep karyoplot
 genome = read.table('/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa.bed',header=FALSE) %>% filter(str_detect(V1,'scaff',negate=T)) %>% arrange(desc(V2))
 names(genome) = c('chr','start','end'); genome$chr = gsub('chr_','',genome$chr); 
@@ -523,11 +597,700 @@ karyoALL <- tidy_bp %>% filter(!grepl('scaffold',chr))
 # Change colors
 genome <- genome %>% mutate(color = rep(c("black", "grey70"), length.out = n()))
 karyoA <- left_join(karyoALL,genome %>% select(chr,color))
-karyoA <- karyoA %>% mutate(color = ifelse(grepl('^ECO',Egg) & color == 'grey70','grey40', color))
 
-pdf('~/symlinks/host/figures/20250327_KARYOPLOT-bFST10KB-MAXlabels.pdf',height=4,width=7.5)
-png('~/symlinks/host/figures/20250327_KARYOPLOT-bFST10KB-MAX.png',height=4,width=7.5,units='in',res=300)
-png('~/symlinks/host/figures/20250327_KARYOPLOT-bFST10KB-MAX-Wonly.png',height=4,width=7.5,units='in',res=300)
+pdf('~/symlinks/host/figures/20250731_KARYOPLOT-bFST10KB-AllvONE.-labels.pdf',height=3.5,width=7.5)
+png('~/symlinks/host/figures/20250731_KARYOPLOT-bFST10KB-AllvONE.png',height=3.5,width=7.5,units='in',res=300)
+pp = getDefaultPlotParams(plot.type=4)
+pp$leftmargin = 0.1
+kp = plotKaryotype(plot.type=4, 
+                   genome = G,
+                   labels.plotter = NULL,
+                   plot.params = pp)
+kpAddChromosomeNames(kp, yoffset = -5,cex=0.7)
+kpAddBaseNumbers(kp,tick.dist = 25000000,minor.ticks = FALSE,cex=0.4)
+
+#Loop through each track (all species together, CC, and CO), and plot them on their own layer 
+counter = 0; tracks = 6
+for (egg in rev(eggcols$Egg)) { 
+  
+  counter = counter + 1; at = autotrack(current.track = counter, total.tracks = tracks);at$r1 <- at$r1-0.02
+  
+  # Grab target egg 
+  cat('Plotting: ',egg,'\n')
+  sub <- karyoA %>% filter(Egg == egg) 
+  ymin=0;ymax=1
+  kpPoints(kp,chr=sub$chr,x=sub$start+5000,y=sub$bFST,ymin=ymin,ymax=ymax,r0=at$r0,r1=at$r1,col=as.character(sub$color))
+  kpAxis(kp,r0=at$r0,r1=at$r1,cex=0.5,numticks = 2,ymin=ymin,ymax=ymax)
+  kpAddLabels(kp,cex=0.5,labels = egg,r0=at$r0+.01, r1=at$r1,col="black",srt=0,label.margin = 0.02)
+  
+}
+
+dev.off()
+
+#### EXAMINE REGIONS OF INTEREST ####
+leg <- md %>% select(Egg,EggCol) %>% na.omit %>% distinct
+genes <- read_tsv('Gene_Lookup.sorted.bed',col_names = F) %>% mutate(X1 = gsub('chr_','',X1))
+names(genes) <- c('chr','start','end','strand','gene')
+top_hit <- tidy_bp %>%
+  group_by(Egg,AvZ) %>%  # Only group by Egg, not chr
+  filter(grepl('MT',chr)) %>% 
+  slice_max(order_by = bFST, n = 1, with_ties = TRUE) %>%  # Get top hits per egg 
+  ungroup() %>%
+  select(chr, start, end, Egg, bFST) %>%
+  data.frame() %>% filter(grepl('ECC',Egg))
+tg <- genes %>% filter(chr == 'MT') %>% mutate(gene = gsub('ID=','',gene))
+tg <- tg %>%
+  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == 'MT') %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+mtp <- tidy_bp %>% filter(chr == 'MT') %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(data=top_hit,aes(x=start+50),y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e3, 1), "-Kb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+mtp
+
+# First, inspect mtDNA 
+outliers <- tidy_bp %>%
+  group_by(Egg,AvZ) %>%  # Only group by Egg, not chr
+  filter(!grepl('scaf|MT|W',chr)) %>% 
+  slice_max(order_by = bFST, n = 1, with_ties = TRUE) %>%  # Get top hits per egg 
+  ungroup() %>%
+  select(chr, start, end, Egg, bFST) %>%
+  data.frame() %>% 
+  mutate(chr = gsub('chr_scaffold','scaffold',paste0('chr_',chr)))
+outliers
+
+##### ECC1/ECC6 #####
+# ECC6 chr2 : BLVRA
+deets <- tidy_bp %>% filter(Egg == 'ECC6' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
+deets
+zchr=2
+zstart=104840001;zs=zstart-5e5;ze=zstart+5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p1 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC6:BLVRA,VOPP1'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p1
+
+# ECC6/ECO4 chrZ : PTPRD
+deets <- tidy_bp %>% filter(Egg == 'ECC6' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(10) 
+deets
+zchr='11'
+zstart=8820001;zs=zstart-1e5;ze=zstart+1e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+ecc6a <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=3, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  geom_text(x=21370001+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+ # ECO4
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC6/ECC1:MTMR14'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+ecc6a
+
+# alt 
+zchr='Z'
+zstart=20730001;zs=zstart-8e5;ze=zstart+11e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p2 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  geom_text(x=21370001+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+ # ECO4
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC6/ECO4:PTPRD'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p2
+
+##### ECC10 #####
+# ECC10 chrZ : RLN3
+deets <- tidy_bp %>% filter(Egg == 'ECC10' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
+deets
+zchr='Z'
+zstart=18980001;zs=zstart-2e5;ze=zstart+2.5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p3 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=ceiling,label='*',col='blue',alpha=1,size=3)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC10:RLN3'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p3
+
+# ECC10 inspect other autosomal hits
+deets <- tidy_bp %>% filter(Egg == 'ECC10' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(10) 
+deets
+zchr='30'
+zstart=350001;zs=zstart-0.5e5;ze=zstart+0.5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+ecc10a <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=ceiling,label='*',col='blue',alpha=1,size=3)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC10:EIF3G'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+ecc10a 
+zchr='31'
+zstart=1130001;zs=zstart-1e5;ze=zstart+1e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+ecc10b <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=ceiling,label='*',col='blue',alpha=1,size=3)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC10:COL11A2'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+ecc10b
+zchr='39'
+zstart=760001;zs=zstart-0.5e5;ze=zstart+0.5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+ecc10c <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=ceiling,label='*',col='blue',alpha=1,size=3)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC10:OXA1L,RNF31'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+ecc10c
+
+##### ECO1 #####
+# ECO1 chr6 : BOLL
+deets <- tidy_bp %>% filter(Egg == 'ECO1' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(10) 
+deets
+zchr=6
+zstart=31140001;zs=zstart-1.5e6;ze=zstart+5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p4 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO1:BOLL'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p4
+
+#ECo1, other peaks
+zchr=30
+zstart=920001;zs=zstart-1e5;ze=zstart+1e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+eco1a <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO1:30:FDX2,SLC27A1'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+eco1a
+zchr='Z'
+zstart=45090001;zs=zstart-2e5;ze=zstart+3e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+eco1b <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO1:CPLX1'))+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+eco1b
+
+##### ECO3 #####
+# ECO3 chrZ : CHSY3 & HINT1 
+deets <- tidy_bp %>% filter(Egg == 'ECO3' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(5) %>% select(chr,start,end)
+deets
+zchr='Z'
+zstart=34100001;zs=zstart-2.5e5;ze=zstart+6e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p5 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  ggtitle(paste0(zchr,' ',zstart,'ECO3:CHSY3 & HINT1'))+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p5
+
+##### ECO4 #####
+# ECO4 chr 5 TSHR
+deets <- tidy_bp %>% filter(Egg == 'ECO4' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(5) 
+deets
+zchr=5
+zstart=19500001;zs=zstart-5e5;ze=zstart+5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p6 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO4:TSHR'))+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p6
+
+# ECO4 chr28 HCN3
+deets
+zchr=28
+zstart=3940001;zs=zstart-3.5e6;ze=zstart+8e6
+tg <- genes %>% filter(chr == zchr & start > zstart-3.5e6 & end < zstart+8e6) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p7 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO4:HCN3'))+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+p7
+
+# alt 
+zchr=11
+zstart=180001;zs=zstart-1.5e5;ze=zstart+2.5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+eco4a <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  ggtitle(paste0(zchr,' ',zstart,'ECO4:SLC6A11'))+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+eco4a
+
+
+pdf('~/symlinks/host/figures/20250801_Candidates-AllvONE.pdf',height=4.5,width=6)
+ggarrange(mtp,p1,p2,p3,p4,p5,p6,p7,nrow=4,ncol=2,common.legend = TRUE)
+dev.off()
+
+pdf('~/symlinks/host/figures/20250807_Candidates-AllvONE-Alts.pdf',height=4.5,width=6)
+ggarrange(ecc6a,ecc10a,ecc10b,ecc10c,eco1a,eco1b,eco4a,nrow=4,ncol=2,common.legend = TRUE)
+dev.off()
+
+```
+
+#### Investigate SNP frequencies chr2
+
+Investigate bp-level FST around the BLVRA locus. Create pie charts showing the geographic distribution of alleles for the top SNPs. 
+
+```bash
+#!/bin/bash
+
+#SBATCH --get-user-env
+#SBATCH --mail-user=merondun@bio.lmu.de
+#SBATCH --clusters=biohpc_gen
+#SBATCH --partition=biohpc_gen_highmem
+#SBATCH --cpus-per-task=1
+#SBATCH --time=48:00:00
+
+#mamba activate snps 
+
+mkdir -p chr2fst
+
+for TARGET in ECC1 ECC6; do  
+SPECIES="CC"
+
+vcftools --gzvcf chr_2.SNP.DP3.vcf.gz --out chr2fst/${TARGET}_chr_2 \
+            --weir-fst-pop bgfst/work/${TARGET}.TRUE-T.list --weir-fst-pop bgfst/work/${TARGET}.TRUE-F.list --fst-window-size 1 --max-missing 0.1
+        awk -v e=${TARGET} '{OFS="\t"}{print $1, $2, $3, $5, e}' chr2fst/${TARGET}_chr_2.windowed.weir.fst | sed '1d' > chr2fst/${TARGET}_chr_2.out
+done 
+cat chr2fst/*_chr_2.out > chr2fst_entire_chr.txt
+
+Rscript -e "
+df <- read.table('chr2fst_entire_chr.txt');
+df\$V4 <- pmax(pmin(df\$V4, 1), 0);
+by(df, df\$V5, function(subdf) {
+  ci <- quantile(subdf\$V4, c(0.025, 0.975), na.rm = TRUE);
+  cat(unique(subdf\$V5), '95% CI:', ci[1], '-', ci[2], '\n')
+})
+"
+```
+
+Plot pies:
+
+```bash
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/femalesN4_vs_all/chr2fst/')
+.libPaths('~/r_libs/')
+library(tidyverse)
+library(RColorBrewer)
+library(ggpubr)
+library(scatterpie)
+library(VariantAnnotation)
+
+md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt')
+
+# Read in top SNPs 
+e <- read_tsv('chr2fst_snps.txt',col_names = F)
+names(e) <- c('chr','start','end','fst','egg')
+
+genes <- read_tsv('../Gene_Lookup.sorted.bed',col_names = F)
+targs <- genes %>% filter(grepl('BLVRA|VOPP1|LOC104065962', X5))
+names(targs) <- c('chr','start','end','strand','gene')
+
+snps <- NULL
+for (g in targs$gene) {
+  cat('Working on ',g,'\n')
+  gt <- targs %>% filter(gene == g)
+  et <- e %>% filter(start > gt$start & start < gt$end) %>% 
+    mutate(fst = pmax(0,pmin(1,fst)), gene = g, start = start - 1) %>% 
+    group_by(egg) %>% 
+    slice_max(fst,n=1,with_ties = FALSE) %>% dplyr::select(chr,start,end,fst,egg,gene)
+  snps <- rbind(snps,et)
+  
+}
+snps <- snps %>% mutate(id = paste0(chr,':',end))
+write.table(snps %>% ungroup %>% select(chr,start,end),file='target_snps.bed',quote=F,sep='\t',row.names=F,col.names=F)
+
+# intersect with vcf to get genos 
+# bedtools intersect -header -a ../vcfs/chr_2.SNP.DP3.vcf.gz -b target_snps.bed | bcftools view -Oz -o chr2fst_keep.vcf.gz
+vcf <- readVcf("chr2fst_keep.vcf.gz", "cuckoo") 
+geno_mat <- as.data.frame(geno(vcf)$GT)
+geno_mat <- geno_mat %>%
+  rownames_to_column("SNP") %>%
+  pivot_longer(-SNP, names_to = "ID", values_to = "GT") %>% 
+  separate(SNP,into=c('chr','id'),sep = ':', remove=F) %>% 
+  separate(id,into=c('end','allele'),sep = '_', remove=T)  
+targ_snps <- geno_mat %>% 
+  mutate(end = as.numeric(end)) %>% 
+  filter(end %in% snps$end) %>% 
+  mutate(allele0 = str_count(GT, "0"),
+         allele1 = str_count(GT, "1"))
+targ_snps %>% dplyr::count(SNP)
+merged <- left_join(targ_snps, md, by = "ID") 
+
+agg_data <- merged %>%
+  group_by(SNP, GeographicGroup) %>%
+  summarise(
+    A0 = sum(allele0, na.rm = TRUE),
+    A1 = sum(allele1, na.rm = TRUE),
+    Latitude = mean(Latitude, na.rm = TRUE),
+    Longitude = mean(Longitude, na.rm = TRUE),
+    r = sqrt(A0 + A1) * 0.8,  
+    .groups = "drop"
+  ) %>% filter(grepl('GCC',GeographicGroup))
+
+ag <- agg_data %>% 
+  separate(SNP,into=c('chr','start'),sep = ':', remove=F) %>%
+  separate(start,into=c('start','allele')) %>% 
+  mutate(start = as.numeric(start)-1) %>% 
+  left_join(.,snps %>% mutate(lab = paste0(gene,': ',egg)) %>% ungroup %>%  dplyr::select(chr,start,gene,lab))
+
+plots <- ggplot() +
+  scatterpie::geom_scatterpie(
+    data = ag,
+    aes(x = Longitude, y = Latitude, r = r),
+    cols = c("A0", "A1"),
+    color = NA
+  ) +
+  scale_fill_manual(values = c("A0" = "#e41a1c", "A1" = "#377eb8")) +
+  facet_wrap(~ SNP+lab) +
+  coord_fixed() +
+  theme_minimal()
+plots
+ggsave('~/symlinks/host/figures/20250802_Spatial_Distribution_Outlier_SNPS_chr2_candidates-AllvONE.pdf', plots,height=5,width=12)
+
+```
+
+#### Investigate NDUFAF4 canorus
+
+See if any canorus egg types show autosomal differentiation around the BLVRA locus compared to the 500kb region surrounding it. 
+
+```bash
+#mamba activate merothon 
+WD=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/ndufaf4
+CD ${WD}
+mkdir -p ndufaf4/work ndufaf4/out
+
+grep 'NDUFAF4' Gene_Lookup.bed | \
+	awk '{OFS="\t"}{print $1, $2-500000, $3+500000,$4, $5}' > ndufaf4/ndufaf4.bed
+bedtools intersect -header -a vcfs/chr_3.SNP.DP3.vcf.gz -b ndufaf4/ndufaf4.bed | bcftools view -Oz -o ndufaf4/ndufaf4.vcf.gz
+
+for TARGET in ECC1 ECC3 ECC6 ECC7 ECC8 ECC10; do
+
+awk -v e=$TARGET 'awk $2 == e' ndufaf4/Eggs.pop | awk '{print $1}' > ndufaf4/work/${TARGET}.T.list
+awk -v e=$TARGET 'awk $2 != e' ndufaf4/Eggs.pop | awk '{print $1}' > ndufaf4/work/${TARGET}.F.list
+
+vcftools --gzvcf ndufaf4/ndufaf4.vcf.gz --out ndufaf4/work/${TARGET} \
+            --weir-fst-pop ndufaf4/work/${TARGET}.T.list --weir-fst-pop ndufaf4/work/${TARGET}.F.list --fst-window-size 1 --max-missing 0.1
+        awk -v e=${TARGET} '{OFS="\t"}{print $1, $2, $3, $5, e}' ndufaf4/work/${TARGET}.windowed.weir.fst | sed '1d' > ndufaf4/out/${TARGET}.out
+done
+```
+
+in R:
+
+```bash
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/ndufaf4')
+.libPaths('~/r_libs/')
+library(tidyverse)
+library(RColorBrewer)
+library(ggpubr)
+library(meRo) #devtools::install_github('merondun/meRo')
+library(devtools)
+
+md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt')
+leg <- md %>% select(Egg,EggCol) %>% distinct
+n <- read_tsv('NDUFAF4.txt',col_names = F)
+names(n) <- c('chr','start','end','fst','Egg')
+ceiling <- n %>% summarize(ymax=max(fst)*.99) %>% pull(ymax)
+n <- n %>%
+  mutate(fst = pmax(0,pmin(1,fst)),
+         targ = ifelse(end > 25511697 & end < 25515677, 'NDUFAF4','Background'))
+n$Egg <- factor(n$Egg,levels=c('ECC1','ECC3','ECC6','ECC7','ECC8','ECC10'))
+np <- n %>% group_by(Egg,targ) %>% 
+  sum_stats(fst) %>% 
+  ggplot(aes(x=Egg,y=mean,ymin=mean-sd,ymax=mean+sd,col=Egg,shape=targ))+
+  geom_point(position=position_dodge(width=0.9),size=5)+
+  geom_errorbar(position=position_dodge(width=0.9),width=0.5)+
+  ylab('Mean +/- SD FST')+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  coord_flip()+
+  theme_bw()
+np
+ggsave('~/symlinks/host/figures/20250802_FST_Near_NDUFAF4-chr3.pdf', np,height=5,width=5)
+
+```
+
+Inspect to see if there are any nonsynonymous mutations:
+
+```R
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/femalesN4_vs_all')
+.libPaths('~/r_libs')
+library(tidyverse)
+library(data.table)
+library(VariantAnnotation)
+library(GenomicFeatures)
+
+txdb = makeTxDbFromGFF("/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR-chr_MT.gff")
+fasta_seq <- readDNAStringSet("/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa")
+
+#load in vcf
+vcf = readVcf("vcfs/chr_3.SNP.DP3.vcf.gz", genome = "cuckoo")
+chr = 'chr_3'
+
+#annotate
+if (chr == 'chr_MT') {
+  code = getGeneticCode("SGC1")
+  coding_predictions = predictCoding(query = vcf, subject = txdb, seqSource = fasta_seq, genetic.code= code) #for chr_MT
+  dat = as_tibble(coding_predictions) %>% dplyr::select(seqnames,start,REF,varAllele,CONSEQUENCE,GENEID)
+} else {
+  code = getGeneticCode("SGC0")
+  coding_predictions = predictCoding(query = vcf, subject = txdb, seqSource = fasta_seq, genetic.code= code,) #for other chrs
+  dat = as_tibble(coding_predictions) %>% dplyr::select(seqnames,start,REF,varAllele,CONSEQUENCE,GENEID)
+  
+}
+
+write.table(dat,file='tmp.txt',quote=F,sep='\t',row.names=F)
+dat = read.table('tmp.txt',header=TRUE)
+writedat = dat %>%
+  as.data.frame %>%
+  unique %>%
+  group_by(seqnames, start, REF, varAllele, GENEID) %>%
+  summarise(CONSEQUENCE = paste(unique(CONSEQUENCE), collapse = ";"), .groups = "drop") %>% ungroup %>%
+  arrange(seqnames,start)
+write.table(writedat,file='ndufaf4/ndufaf4.annotated.txt',quote=F,sep='\t',row.names=F)
+
+pnps <- writedat %>% mutate(gene = gsub('gene-','',GENEID)) %>% 
+  group_by(gene) %>% dplyr::count(CONSEQUENCE) %>% 
+  filter(CONSEQUENCE == 'nonsynonymous' | CONSEQUENCE == 'synonymous') %>% 
+  pivot_wider(names_from = CONSEQUENCE,values_from = n) %>% 
+  mutate(pnps = nonsynonymous/synonymous)
+t <- pnps %>% filter(grepl('NDUFAF4',gene))
+p <- pnps %>% 
+  ggplot(aes(x=pnps))+
+  geom_histogram()+
+  geom_vline(xintercept=t$pnps,lty=2,color='blue')+
+  xlab('pN/pS')+ylab('Count (Genes on chr3)')+
+  theme_bw()
+ggsave('~/symlinks/host/figures/20250805_pNpS_chr3_NDUFAF4.pdf',p,height=2.5,width=4)
+```
+
+## bFST: Females Nestlings N=3
+
+Repeat all the above analyses, except only requiring n=3 females for focal eggs. This includes ECC8. This analysis will also only use nestlings, which applies to some optatus egg types (ECO4) which were designated based on a sole egg type existing within a locality. 
+
+```bash
+# Egg gene scan, sample selection for females >=3 and nestlings 
+#### Find associations between MT/W haplotypes and features 
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/females_nestlingsN3_vs_all')
+.libPaths('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/software/mambaforge/envs/r25/lib/R/library')
+library(tidyverse)
+library(viridis)
+library(tidyverse)
+library(sf)
+library(ggspatial)
+
+md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt') 
+md = md %>% drop_na(Egg) %>% filter(Sex == 'F' & Analysis_PopulationGenetics == 1 & Egg != 'NA' & grepl('Young',Age))
+md %>% count(Egg)
+keep = md %>% count(Egg) %>% filter(n >= 3)
+mds = md %>% filter(Egg %in% keep$Egg)
+mds %>% count(Egg)
+
+write.table(mds %>% select(ID,Egg) %>% arrange(Egg),file='Eggs.pop',quote=F,sep='\t',row.names=F,col.names=F)
+write.table(mds %>% select(ID,Egg) %>% arrange(Egg) %>% filter(grepl('ECC',Egg)),file='CC.pop',quote=F,sep='\t',row.names=F,col.names=F)
+write.table(mds %>% select(ID,Egg) %>% arrange(Egg) %>% filter(grepl('ECO',Egg)),file='CO.pop',quote=F,sep='\t',row.names=F,col.names=F)
+
+# Plot the individuals
+#jitter points up to 1 lat/long for viewing
+mds = md %>% mutate(LatJit = jitter(Latitude,amount =2),
+                     LonJit = jitter(Longitude,amount=2))
+sites = st_as_sf(mds, coords = c("LonJit", "LatJit"), 
+                 crs = 4326, agr = "constant")
+
+#set up map and convert df to coordinate frame
+world = map_data("world")
+
+imm_spat = ggplot() +
+  geom_polygon(data = world, aes(x = long, y = lat, group = group), col='grey90', fill='white') +
+  geom_sf(data = sites, 
+          aes(fill=Egg,shape=Egg),
+          size=3,show.legend = T) +
+  xlab('')+ylab('')+
+  coord_sf(xlim = c(min(mds$Longitude)-5, max(mds$Longitude)+5), 
+           ylim = c(min(mds$Latitude)-5, max(mds$Latitude)+5), expand = FALSE)+
+  scale_fill_manual(values=mds$EggCol,breaks=mds$Egg)+
+  scale_shape_manual(values=mds$EggShape,breaks=mds$Egg)+
+  theme_classic()+
+  facet_grid(SpeciesShort ~.)+
+  theme(panel.border = element_rect(colour = "black", fill=NA, size=1),panel.background = element_rect(fill = "aliceblue"))+
+  theme(legend.text = element_text(size = 6),legend.title = element_text(size = 6),legend.key.size = unit(0.1, 'cm'))+
+  annotation_scale(line_width=0.5)
+imm_spat
+
+ggsave('~/symlinks/host/figures/20250801_EggHunt_Spatial-FemalesNestlings-AllvONE.pdf',imm_spat,
+       dpi=300,height=6,width=8)
+```
+
+#### Plot 
+
+Same as above...  use the same filtered VCFs, because vcftools will re-filter based on max-missingness within the cohort:
+
+````R
+#### Plot 10KB FST Gene Scan
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/nestlings_females_N3_vs_all/')
+.libPaths('~/r_libs')
+library(karyoploteR)
+library(ggpubr)
+library(scales)
+library(tidyverse)
+library(viridis)
+library(RColorBrewer)
+library(zoo)
+library(data.table)
+
+md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt')
+
+##### Load and prep FST   ######
+tidy_bp = fread('20250802_bFST_Nestling.txt.gz')
+names(tidy_bp) = c('chr','start','end','Egg','FST','lo','hi','max','mean','sd','zfst')
+setDT(tidy_bp)
+tidy_bp <- tidy_bp %>% select(-lo,-hi,-mean,-zfst,-sd)
+
+#strip chr_, and assign AvZ
+tidy_bp <- tidy_bp[
+  , chr := gsub('chr_', '', chr)][
+    , AvZ := fifelse(chr == 'W', 'W',
+                     fifelse(chr == 'Z', 'Z',
+                             fifelse(chr == 'MT', 'MT', 'Autosome')))]
+
+#calculate bFST for each window (fst[obs] - max(fst[randomized])) 
+tidy_bp <- tidy_bp %>% mutate(FST = pmax(0,pmin(1,FST)),
+                              bFST = pmax(0,pmin(1,FST-max)),
+                              Species = ifelse(grepl('ECC',Egg,),'CC','CO')) %>% 
+  ungroup %>% 
+  group_by(chr,start,Species) %>%  
+  mutate(second_highest_bFST = nth(sort(bFST, decreasing = TRUE), 2, default = NA_real_),
+         dbFST = pmax(0, bFST - second_highest_bFST)) %>% 
+  ungroup 
+
+tidy_bp %>% filter(chr == 'MT') %>% arrange(start)
+
+# Formatting
+eggcols <- md %>% arrange(EggOrder) %>% select(Egg,EggCol) %>% na.omit %>% unique %>% filter(Egg %in% unique(tidy_bp$Egg))
+tidy_bp$Egg <- factor(tidy_bp$Egg, levels=eggcols$Egg)
+tidy_bp$AvZ <- factor(tidy_bp$AvZ,levels=c('Autosome','Z','MT','W'))
+
+###### GWAS #######
+
+#prep karyoplot
+genome = read.table('/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa.bed',header=FALSE) %>% filter(str_detect(V1,'scaff',negate=T)) %>% arrange(desc(V2))
+names(genome) = c('chr','start','end'); genome$chr = gsub('chr_','',genome$chr); 
+genome = genome %>% mutate(chr = factor(chr, levels = c(as.character(1:39), "Z", "W", "MT"))) %>%  arrange(chr)
+G = makeGRangesFromDataFrame(genome,seqnames.field = 'chr',start.field = 'start',end.field = 'end')
+
+#add colors 
+chrs = genome %>% select(chr) %>% mutate(Color = if_else(row_number() %% 2 == 0, 'grey60', 'black'))
+
+# Plot huge all SNPs
+karyoALL <- tidy_bp %>% filter(!grepl('scaffold',chr))
+
+# Change colors
+genome <- genome %>% mutate(color = rep(c("black", "grey70"), length.out = n()))
+karyoA <- left_join(karyoALL,genome %>% select(chr,color))
+#karyoA <- karyoA %>% mutate(color = ifelse(grepl('^ECO',Egg) & color == 'grey70','grey40', color))
+
+pdf('~/symlinks/host/figures/20250731_KARYOPLOT-bFST10KB-AllvONE.-labels.pdf',height=3.5,width=7.5)
+png('~/symlinks/host/figures/20250802_KARYOPLOT-bFST10KB-AllvONE-NESTLING.png',height=4,width=7.5,units='in',res=300)
 pp = getDefaultPlotParams(plot.type=4)
 pp$leftmargin = 0.1
 kp = plotKaryotype(plot.type=4, 
@@ -536,10 +1299,10 @@ kp = plotKaryotype(plot.type=4,
                    labels.plotter = NULL,
                    plot.params = pp)
 kpAddChromosomeNames(kp, yoffset = -5,cex=0.7)
-kpAddBaseNumbers(kp,tick.dist = 10000000,minor.ticks = FALSE,cex=0.4)
+kpAddBaseNumbers(kp,tick.dist = 25000000,minor.ticks = FALSE,cex=0.4)
 
 #Loop through each track (all species together, CC, and CO), and plot them on their own layer 
-counter = 0; tracks = 6
+counter = 0; tracks = 7
 for (egg in rev(eggcols$Egg)) { 
   
   counter = counter + 1; at = autotrack(current.track = counter, total.tracks = tracks);at$r1 <- at$r1-0.02
@@ -558,359 +1321,189 @@ for (egg in rev(eggcols$Egg)) {
 dev.off()
 
 #### EXAMINE REGIONS OF INTEREST ####
-outliers <- tidy_bp %>%
+leg <- md %>% select(Egg,EggCol) %>% na.omit %>% distinct
+genes <- read_tsv('Gene_Lookup.sorted.bed',col_names = F) %>% mutate(X1 = gsub('chr_','',X1))
+names(genes) <- c('chr','start','end','strand','gene')
+top_hit <- tidy_bp %>%
   group_by(Egg,AvZ) %>%  # Only group by Egg, not chr
-  filter(!grepl('scaf|MT|W',chr)) %>% 
-  slice_max(order_by = bFST, n = 1, with_ties = TRUE) %>%  # Get top 5 per Egg
+  filter(grepl('MT',chr)) %>% 
+  slice_max(order_by = bFST, n = 1, with_ties = TRUE) %>%  # Get top hits per egg 
   ungroup() %>%
   select(chr, start, end, Egg, bFST) %>%
-  data.frame() %>% 
-  mutate(chr = gsub('chr_scaffold','scaffold',paste0('chr_',chr)))
+  data.frame() %>% filter(grepl('ECC',Egg))
+tg <- genes %>% filter(chr == 'MT') %>% mutate(gene = gsub('ID=','',gene))
+tg <- tg %>%
+  #interval_left_join(tg, by = c("start" = "start", "end" = "end")) %>%
+  #select(chr=chr.y,start=start.y,end=end.y,gene,Egg,strand) %>% filter(!grepl('ECO',Egg)) %>% 
+  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == 'MT') %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+mtp <- tidy_bp %>% filter(chr == 'MT') %>%
+  ggplot(aes(x=start,y=bFST,col=Egg))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(data=top_hit,aes(x=start+50),y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e3, 1), "-Kb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+mtp
+
+# First, inspect mtDNA 
+outliers <- tidy_bp %>%
+  group_by(Egg,AvZ) %>%  # Only group by Egg, not chr
+  filter(!grepl('scaf|MT|W',chr) & bFST > 0) %>% 
+  slice_max(order_by = bFST, n = 1, with_ties = TRUE) %>%  # Get top hits per egg 
+  ungroup() %>%
+  select(chr, start, end, Egg, bFST) %>%
+  data.frame() 
 outliers
-write.table(outliers,file='20250331_bFST_outliers.txt',quote=F,sep='\t',row.names=F,col.names=F)
-#bedtools sort -i 20250331_bFST_outliers.txt > 20250331_bFST_outliers.sorted.txt
+#write.table(outliers,file='20250731_bFST_outliers-AllvONE.txt',quote=F,sep='\t',row.names=F,col.names=F)
+#bedtools sort -i 20250731_bFST_outliers-AllvONE.txt > 20250731_bFST_outliers-AllvONE.sorted.txt
 
 
-##### ECC1 #####
-# ECC1 chrZ : BNC2
-deets <- tidy_bp %>% filter(Egg == 'ECC1' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
-deets
-zchr='Z'
-zstart=23520001
-pe1 <- tidy_bp %>% filter(chr == zchr & start > zstart-5e5 & end < zstart+5e5) %>%
-  ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  ggtitle(paste0(zchr,' ',zstart,'ECC1:BNC2'))+
-  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
-pe1
-
-##### ECC6 #####
+##### ECC1/ECC6 #####
 # ECC6 chr2 : BLVRA
-deets <- tidy_bp %>% filter(Egg == 'ECC6' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
-deets
 zchr=2
-zstart=104840001
-p1 <- tidy_bp %>% filter(chr == zchr & start > zstart-5e5 & end < zstart+5e5) %>%
+zstart=104840001;zs=zstart-5e5;ze=zstart+5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p1 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 104902858, xmax = 104937472, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # blvra
-  geom_rect(aes(xmin = 104765334, xmax = 104839609, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # vopp1
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
   geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
   ggtitle(paste0(zchr,' ',zstart,'ECC6:BLVRA,VOPP1'))+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
 p1
 
-
-# ECC6 chr2 : BLVRA
-deets <- tidy_bp %>% filter(Egg == 'ECC6' & !grepl('scaf',chr)) %>% group_by(AvZ) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
+# ECC6 chrZ : F2R/FR2L/FR2RL1
+deets <- tidy_bp %>% filter(Egg == 'ECC6' & !grepl('scaf',chr)) %>% group_by(AvZ) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% select(chr,start,end)
 deets
 zchr='Z'
-zstart=18030001
-p99 <- tidy_bp %>% filter(chr == zchr & start > zstart-5e5 & end < zstart+5e5) %>%
+zstart=18030001;zs=zstart-2e5;ze=zstart+2e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+pz1 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 17935600, xmax = 18066571, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # blvra
-  geom_rect(aes(xmin = 18025552, xmax = 18032485, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # vopp1
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
   geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  ggtitle(paste0(zchr,' ',zstart,'ECC6:IQGAP2'))+
+  geom_text(x=21370001+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+ # ECO4
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC6/ECO4:PTPRD'))+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
-p99
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
+pz1
 
-##### ECC10 #####
-# ECC10 chrZ : RLN3
-deets <- tidy_bp %>% filter(Egg == 'ECC10' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
+# ECC8
+deets <- tidy_bp %>% filter(Egg == 'ECC8' & !grepl('scaf|W|MT',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
 deets
-zchr='Z'
-zstart=18980001
-p2 <- tidy_bp %>% filter(chr == zchr & start > zstart-2e5 & end < zstart+2.5e5) %>%
+zchr=36
+zstart=150001;zs=zstart-1.5e5;ze=zstart+1.5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p2 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 18975843, xmax = 18979322, ymin = -Inf, ymax = Inf), fill = "grey90", alpha = 0.4,col=NA) + # rln3
-  geom_rect(aes(xmin = 18987657, xmax = 19020048, ymin = -Inf, ymax = Inf), fill = "grey90", alpha = 0.4,col=NA) + # rln3
-  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  ggtitle(paste0(zchr,' ',zstart,'ECC10:RLN3'))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=ceiling,label='*',col='blue',alpha=1,size=3)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC8:FIS1'))+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
 p2
 
-##### ECO1 #####
-# ECO1 chr6 : BOLL
-deets <- tidy_bp %>% filter(Egg == 'ECO1' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
+# ECC10 & ECC8 chrZ : RLN3
+deets <- tidy_bp %>% filter(Egg == 'ECC10' & !grepl('scaf|W|MT',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
 deets
-zchr=6
-zstart=31140001
-zstart_second=29970001
-p3 <- tidy_bp %>% filter(chr == zchr & start > zstart-1.5e6 & end < zstart+5e5) %>%
+zchr='Z'
+zstart=18980001;zs=zstart-2e5;ze=zstart+2e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p3 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 31138680, xmax = 31156397, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) +  #boll
-  geom_rect(aes(xmin = 29965430, xmax = 29971141, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) +  #boll
-  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  geom_text(x=zstart_second+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  ggtitle(paste0(zchr,' ',zstart,'ECO1:BOLL'))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  geom_text(x=zstart+5000,y=ceiling,label='*',col='blue',alpha=1,size=3)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECC10:RLN3'))+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
 p3
 
-# Second peak?
-regiondeets <- tidy_bp %>% filter(Egg == 'ECO1' & chr == zchr & start > zstart-1.5e6 & end < zstart+5e5) %>% slice_max(bFST,n=5) %>% arrange(bFST)
-regiondeets
-
-# CPLX1  
-zchr='Z'
-zstart=45190001
-pn <- tidy_bp %>% filter(chr == zchr & start > zstart-5e5 & end < zstart+5e5) %>%
+# ECO1 chr35 : FCGBP
+zchr=35
+zstart=580001;zs=zstart-1e5;ze=zstart+1e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p4 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  ggtitle(paste0(zchr,' ',zstart,'ECO1:CPLX1'))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
   geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO1:FCGBP'))+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
-pn
-
-##### ECO3 #####
-# ECO3 chrZ : HINT1
-deets <- tidy_bp %>% filter(Egg == 'ECO3' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(5) %>% select(chr,start,end)
-deets
-zchr='Z'
-zstart=34540001
-p4 <- tidy_bp %>% filter(chr == zchr & start > zstart-3e5 & end < zstart+3e5) %>%
-  ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 34549415, xmax = 34556113, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) +  #boll
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  ggtitle(paste0(zchr,' ',zstart,'ECO3:HINT1'))+
-  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  theme_classic(base_size=8)+ylab('')+xlab('')
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
 p4
 
-##### ECO4 #####
-# ECO4 chr 5 TSH
-deets <- tidy_bp %>% filter(Egg == 'ECO4' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(5) %>% select(chr,start,end)
+##### ECO2 #####
+# ECO2 chr6 : SLC40A1
+deets <- tidy_bp %>% filter(Egg == 'ECO2' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(3) %>% select(chr,start,end)
 deets
-zchr=5
-zstart=19500001
-p5 <- tidy_bp %>% filter(chr == zchr & start > zstart-5e5 & end < zstart+5e5) %>%
+zchr=6
+zstart=35090001;zs=zstart-2e5;ze=zstart+2e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p5 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 19487067, xmax = 19544653, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) +
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  ggtitle(paste0(zchr,' ',zstart,'ECO4:TSHR'))+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
   geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
+  ggtitle(paste0(zchr,' ',zstart,'ECO2:SLC40A1'))+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
 p5
 
-# ECO4 chr28 HCN3
+##### ECO3 #####
+# ECO3 chrZ : AIG1
+deets <- tidy_bp %>% filter(Egg == 'ECO3' & !grepl('scaf',chr)) %>% group_by(chr) %>% slice_max(bFST) %>% arrange(desc(bFST)) %>% head(5) %>% select(chr,start,end)
 deets
-zchr=28
-zstart=3940001
-zstart_3rd=3670001
-
-p6 <- tidy_bp %>% filter(chr == zchr & start > zstart-3.5e6 & end < zstart+8e6) %>%
+zchr=3
+zstart=47010001;zs=zstart-1.5e5;ze=zstart+1.5e5
+tg <- genes %>% filter(chr == zchr & start > zs & end < ze) %>%  mutate(xstart = if_else(strand == "+", start, end),xend   = if_else(strand == "+", end, start))
+ceiling <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>% summarize(ymax=max(bFST)*.99) %>% pull(ymax)
+p6 <- tidy_bp %>% filter(chr == zchr & start > zs & end < ze) %>%
   ggplot(aes(x=start,y=bFST,col=Egg))+
-  geom_rect(aes(xmin = 3941523, xmax = 3958025, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # CLK2
-  geom_rect(aes(xmin = 3686372, xmax = 3702332, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # MCL1
-  geom_rect(aes(xmin = 3928875, xmax = 3941209, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + # HCN3
-  #geom_rect(aes(xmin = 2353765, xmax = 2783871, ymin = -Inf, ymax = Inf), fill = "gray90", alpha = 0.9,col=NA) + #weird keratin repeats
-  scale_color_manual(values=md$EggCol,breaks=md$Egg)+
-  ggtitle(paste0(zchr,' ',zstart,'ECO4:MCL-1'))+
-  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
-  geom_text(x=zstart_3rd+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  geom_segment(data = tg,aes(x = xstart, xend = xend, y = ceiling*0.95, yend = ceiling*0.95),
+               arrow = arrow(length = unit(0.07, "cm"),ends = "last",type = "closed"),inherit.aes = FALSE,linewidth = 0.3,color = "gray40") +
+  geom_text(data=tg,aes(x=start+((end-start)/2),y=ceiling,label=gene),angle=30, size=1, inherit.aes=FALSE,hjust = 0,vjust=1)+
+  scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
   geom_line()+scale_x_continuous(breaks = pretty_breaks(n = 3),labels = function(x) paste0(round(x / 1e6, 1), "-Mb")) +scale_y_continuous(breaks=pretty_breaks(n=3))+
-  theme_classic(base_size=8)+ylab('')+xlab('')
+  ggtitle(paste0(zchr,' ',zstart,'ECO3:AIG3'))+
+  geom_text(x=zstart+5000,y=Inf,label='*',col='blue',alpha=1,size=3,vjust=1)+
+  theme_classic(base_size=8)+ylab('')+xlab('')+coord_cartesian(clip='off')
 p6
 
-regiondeets <- tidy_bp %>% filter(Egg == 'ECO4' & chr == zchr & end < 3.9e6) %>% slice_max(bFST,n=5) %>% arrange(bFST) 
-regiondeets
 
-ggarrange(p1,p2,p3,p4,p5,p6,nrow=3,ncol=2,common.legend = TRUE)
-pdf('~/symlinks/host/figures/20250404_Candidates.pdf',height=3.5,width=6)
+pdf('~/symlinks/host/figures/20250801_Candidates-AllvONE-NESTLINGS.pdf',height=4,width=6)
 ggarrange(p1,p2,p3,p4,p5,p6,nrow=3,ncol=2,common.legend = TRUE)
 dev.off()
 
-
-### Import sweeps
-tidy_sweep = fread('20250401_SWEEPS.txt.gz')
-names(tidy_sweep) = c('chr','Group','mid','start','end','var','sfs','ld','u')
-setDT(tidy_sweep)
-tidy_sweep <- tidy_sweep[
-  , chr := gsub('chr_', '', chr)][
-    , AvZ := fifelse(chr == 'W', 'W',
-                     fifelse(chr == 'Z', 'Z',
-                             fifelse(chr == 'MT', 'MT', 'Autosome')))]
-
-# Average u in 10kb windows 
-window_size <- 1e4
-tidy_sweep[, window := floor(start / window_size) * window_size+1]
-sweep_avg <- tidy_sweep[, .(mean_u = mean(u, na.rm = TRUE)), 
-                        by = .(chr, window, Group)]
-
-# Assign just p1 p2 p3 etc for each population for lty symbology 
-sweep_avg <- sweep_avg %>% separate(Group,into=c('Egg','Population'),remove=F) 
-pop_id <- sweep_avg %>% select(Egg,Population) %>% distinct %>% group_by(Egg) %>% arrange(Egg) %>%  mutate(PopID = paste0('u',row_number()))
-sweeps_pop <- left_join(sweep_avg,pop_id) %>% select(chr,start=window,Group,Egg,Population,PopID,mean_u)
-
-# For visualization, scale mu to bFST. For later on, we also scale it across egg types so that they can be visualized on the same plot (escaled_mean_u)
-sweeps <- sweeps_pop %>%
-  group_by(Group,Egg,PopID) %>%
-  mutate(
-    # min/max for mean_u
-    min_u = min(mean_u, na.rm = TRUE),
-    max_u = max(mean_u, na.rm = TRUE),
-    
-    # Scale mean_u between 0 and 1 for each Egg
-    escaled_mean_u = ifelse(
-      min_u == max_u, 
-      0.5,  # neutral value if all mean_u are the same
-      (mean_u - min_u) / (max_u - min_u))) %>%
-  select(-min_u, -max_u) %>%  # don't need this garbage
-  ungroup()
-
-# Sanity, check that the scaling works, escaled_mean_u ranges from 0 - 1
-sweeps %>%
-  group_by(Population,PopID,Egg) %>% 
-  summarize(min = min(escaled_mean_u,na.rm=TRUE),max=max(escaled_mean_u,na.rm=TRUE))
-
-# identify sweeps within each egg 
-sweepdat <- NULL
-for (grp in unique(sweeps$Group)) { 
-  wins <- sweeps %>% filter(Group == grp) %>% 
-    filter(escaled_mean_u >= quantile(escaled_mean_u, 0.9,na.rm=TRUE)) %>% 
-    select(chr,start,Egg)
-  sweepdat <- rbind(sweepdat,wins)
-}
-
-sweeps %>% mutate(FST = pmax(0,pmin(1,FST)),
-                  bFST = pmax(0,pmin(1,FST-max)),
-                  Species = ifelse(grepl('ECC',Egg,),'CC','CO')) %>% 
-  ungroup %>% 
-  group_by(chr,start,Egg) %>% 
-  mutate(second_highest_bFST = nth(sort(bFST, decreasing = TRUE), 2, default = NA_real_),
-         dbFST = pmax(0, bFST - second_highest_bFST)) %>% 
-  ungroup 
-
-
-pdf('~/symlinks/host/figures/20250327_KARYOPLOT-bFST10KB-MAXlabels.pdf',height=4,width=7.5)
-png('~/symlinks/host/figures/20250327_KARYOPLOT-bFST10KB-MAX.png',height=4,width=7.5,units='in',res=300)
-png('~/symlinks/host/figures/20250327_KARYOPLOT-bFST10KB-MAX-Wonly.png',height=4,width=7.5,units='in',res=300)
-pp = getDefaultPlotParams(plot.type=4)
-pp$leftmargin = 0.1
-kp = plotKaryotype(plot.type=4, 
-                   genome = G,
-                   #genome = keepSeqlevels(G, "W", pruning.mode = "coarse"),
-                   labels.plotter = NULL,
-                   plot.params = pp)
-kpAddChromosomeNames(kp, yoffset = -5,cex=0.7)
-kpAddBaseNumbers(kp,tick.dist = 10000000,minor.ticks = FALSE,cex=0.4)
-
-#Loop through each track (all species together, CC, and CO), and plot them on their own layer 
-counter = 0; tracks = 10
-for (grp in unique(sweeps$Group)) { 
-  
-  counter = counter + 1; at = autotrack(current.track = counter, total.tracks = tracks);at$r1 <- at$r1-0.02
-  
-  # Grab target group
-  cat('Plotting: ',grp,'\n')
-  subs <- sweeps %>% filter(Group == grp) 
-  ymin=0;ymax=1
-  eggcol <- eggcols %>% filter(Egg %in% subs$Egg) %>% pull(EggCol)
-  
-  # Add sweeps
-  kpLines(kp,chr=subs$chr,x=subs$start+5000,y=subs$escaled_mean_u,ymin=ymin,ymax=ymax,r0=at$r0,r1=at$r1,col=eggcol)
-  kpAxis(kp,r0=at$r0,r1=at$r1,cex=0.5,numticks = 2,ymin=ymin,ymax=ymax)
-  kpAddLabels(kp,cex=0.5,labels = grp,r0=at$r0+.01, r1=at$r1,col="black",srt=0,label.margin = 0.02)
-  
-}
-
-dev.off()
-
-```
-
-#### Genes
-
-
-
-Chr2, ECC6, [chicken oxidative phosphorylation](https://www.nature.com/articles/s41598-021-04077-y) (COA1):  https://www.ncbi.nlm.nih.gov/gene/104065962
-
-Chr2, ECC6 ,  [oxidative response mtDNA dysfunction](https://doi.org/10.1038/labinvest.2011.70) VOPP1): https://www.ncbi.nlm.nih.gov/gene/104065935
-
-Chr2, ECC6, [general biliverdin](https://doi.org/10.1086/694297)  and [BLVRA oxidative response]([10.1016/j.freeradbiomed.2017.11.020](https://doi.org/10.1016/j.freeradbiomed.2017.11.020)) (BLVRA): https://www.ncbi.nlm.nih.gov/gene/104065936
-
-ChrZ, ECC10, [chicken pituitary](https://pmc.ncbi.nlm.nih.gov/articles/PMC9676923/) (RLN3): https://www.ncbi.nlm.nih.gov/gene/104063035
-
-Chr6, ECO1, [germline](https://doi.org/10.1016/j.scr.2017.04.008) (BOLL): https://www.ncbi.nlm.nih.gov/gene/104058472
-
-Chr6, ECO1, psuedogene (CLK1): https://www.ncbi.nlm.nih.gov/gene/128852493
-
-ChrZ, ECO3, [chicken reproduction](https://www.sciencedirect.com/science/article/abs/pii/S0093691X10002712) (HINT1):  
-
-chrZ, ECC6, [chicken follicle](https://www.sciencedirect.com/science/article/pii/S0032579123001244) (IQGAP2): https://www.ncbi.nlm.nih.gov/gene/104056386
-
-Chr28, ECO4, [chicken egg development](https://pubmed.ncbi.nlm.nih.gov/38652954/) (HCN3): https://www.ncbi.nlm.nih.gov/gene/104057086
-
-Chr28, ECO4, [reproduction chickens follicle](https://pmc.ncbi.nlm.nih.gov/articles/PMC4669721/) (MCL-1): https://www.ncbi.nlm.nih.gov/gene/104057095
-
-Chr28, ECO4,[circadian rhythm plants](https://www.pnas.org/doi/10.1073/pnas.96.22.12362?url_ver=Z39.88-2003&rfr_id=ori%3Arid%3Acrossref.org&rfr_dat=cr_pub++0pubmed) and [mammals](https://www.science.org/doi/10.1126/scisignal.2000305?url_ver=Z39.88-2003&rfr_id=ori:rid:crossref.org&rfr_dat=cr_pub%20%200pubmed) (CLK2): https://www.ncbi.nlm.nih.gov/gene/104057075
-
-Chr28, ECO4, [chicken](mitochondrion) (C28H1orf43): https://www.ncbi.nlm.nih.gov/gene/104061394
-
-Chr5, ECO4, [chickens](https://pmc.ncbi.nlm.nih.gov/articles/PMC8045693) (TSHR): https://www.ncbi.nlm.nih.gov/gene/104059620
-
-
-
-Check for excess linkage (e.g. inversions within those regions):
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=5
-#SBATCH --time=24:00:00
-
-mkdir -p inversion
-for SPECIES in CO CC; do
-
-while read -r CHR START END; do
-    fstart=$((START - 2000000))
-    fend=$((START + 2000000))
-
-    echo "Working on ${CHR} ${START} ${END} with flank ${fstart} ${fend}"
-    # Ensure start is not negative
-    if [ "$fstart" -lt 1 ]; then
-        fstart=1
-    fi
-
-    # Including flanking
-    bcftools view --samples-file ${SPECIES}.list vcfs/${CHR}.SNP.DP3.vcf.gz --regions ${CHR}:${fstart}-${fend} -Ou | \
-      bcftools view --min-alleles 2 --max-alleles 2 --min-ac 2 -e 'F_MISSING > 0.05' -Oz \
-        -o inversion/${CHR}.${SPECIES}.inversion.flank.vcf.gz
-
-    # Only within region
-    bcftools view --samples-file ${SPECIES}.list vcfs/${CHR}.SNP.DP3.vcf.gz --regions ${CHR}:${fstart}-${fend} -Ou | \
-      bcftools view --min-alleles 2 --max-alleles 2 --min-ac 2 -e 'F_MISSING > 0.05' -Oz \
-        -o inversion/${CHR}.${SPECIES}.inversion.vcf.gz
-
-    plink --allow-extra-chr --double-id --vcf inversion/${CHR}.${SPECIES}.inversion.flank.vcf.gz --r2 --out inversion/${CHR}_${SPECIES}_LD --ld-window 999999999 --ld-window-kb 1000000000
-
-    plot_ld --input inversion/${CHR}_${SPECIES}_LD.ld --out inversion/${CHR}_${SPECIES}.png --win_size 10 --highlight ${START}-${END}
-    vcf_to_pca --vcf inversion/${CHR}.${SPECIES}.inversion.vcf.gz --metadata ~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt --phenotype Egg --out inversion/${CHR}.${SPECIES}_pca.png
-
-done < regions.bed
-
-done
-
-```
+````
 
 ## FST: Base-pair level fixed SNPs [Fig 4]
 
-Hierarchical contrasts, egg:haplotype comparisons:
+Hierarchical contrasts, egg:haplotype comparisons. Identify samples and name the phylogenetic comparisons: 
 
 ```R
 setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host')
@@ -991,6 +1584,8 @@ dev.off()
 
 ### Estimate FST
 
+Base pair resolution 
+
 ```bash
 #!/bin/bash
 
@@ -1037,7 +1632,9 @@ done
 
 ```
 
-Identify candidates
+### Plot 
+
+Identify candidate genes with nonsynonymous mutations that are fixed across contrasts (e.g. blue emergence):
 
 ```R
 #### Identify candidates from female-only FST scan 
@@ -1312,435 +1909,62 @@ gtp
 dev.off()
 ```
 
-
-
-## NDUFAF4 across Cuculiformes
-
-### Fastq Alignment-Based
-
-Species to assay, brood parasitic consortium:
-
-| Species               | Sex    | Tech | Accession   |
-| --------------------- | ------ | ---- | ----------- |
-| Clamator_glandarius   | Female | HiFi | SRR26807982 |
-| Coccyzus_lansbergi    | Female | HiFi | SRR26902471 |
-| Dromococcyx_pavoninus | Female | HiFi | SRR26905917 |
-
-All:
-
-| Cuculus  canorus        | Female | Illumina | SRR11394165                          |
-| ----------------------- | ------ | -------- | ------------------------------------ |
-| Cuculus canorus         | Female | Illumina | SRR11531702                          |
-| Cuculus canorus         | Female | Illumina | SRR11531718                          |
-| Cuculus canorus         | Male   | Illumina | SRR11531726                          |
-| Cuculus canorus         | Male   | Illumina | SRR11531741                          |
-| Cuculus micropterus     | Male   | Illumina | SRR14117632                          |
-| Cuculus micropterus     | Female | Illumina | SRR14117631                          |
-| Cuculus poliocephalus   | Male   | Illumina | SRR14117570                          |
-| Cuculus poliocephalus   | Female | Illumina | SRR14117568                          |
-| Cuculus canorus         | Female | Illumina | SRR99999129                          |
-| Clamator glandarius     | Female | HiFi     | SRR26807982                          |
-| Coccyzus lansbergi      | Female | HiFi     | SRR26902471                          |
-| Cuculus canorus         | Female | HiFi     | All bCucCan1.pri Reads; PRJNA1008121 |
-| Dromococcyx pavoninus   | Female | HiFi     | SRR26905917                          |
-| Geococcyx californianus | Female | Illumina | SRR9994302                           |
-| Piaya cayana            | Female | Illumina | SRR9947006                           |
-| Tapera naevia           | Female | HiFi     | SRR26905805                          |
-
-From the merged blast hits on the cuckoo genome, extract the sequence corresponding to the 2 NDUFAF4 hits for inspection:
+### Plot NDUFAF4 Individual SNPs
 
 ```bash
-cat Cuculus_canorus_merged.bed
-NC_071403.1     25511697        25516398        Cuculus_canorus_1       0       -
-NC_071440.1     21177317        21177456        Cuculus_canorus_3       0       +
-```
-
-Align all reads from each subsampled 5gb library to the whole cuckoo genome. This will take 4 runs, corresponding to illumina / HiFi for cuckoos vs others. 
-
-Cuckoo HiFi data:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=10
-#SBATCH --time=48:00:00
-
-# Cuckoo HiFi genome individual
-
-RUN=cuckoo_HiFi
-
-echo "Aligning sample: ${RUN}"
-
-SCRATCH=/tmp/$SLURM_JOB_ID
-genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
-cuckoo_hifi=/dss/dsslegfs01/pr53da/pr53da-dss-0021/rawdata/External_Data_SRA_GenomeArk/PacBio_GenomeArk/Cuculus_canorus/bCucCan1_pacbio.fastq.gz
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
-
-# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${cuckoo_hifi} out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
-minimap2 -ax map-pb -t 8 ${genome} ${subdir}/${RUN}.10gb.fastq.gz > ${SCRATCH}/${RUN}.sam
-samtools sort ${SCRATCH}/${RUN}.sam | samtools view -F 4 -b > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam; 
-```
-
-Cuckoo illumina data:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=10
-#SBATCH --time=48:00:00
-
-# Align cuckoo illumina data
-
-RUN=$1
-
-echo "Aligning sample: ${RUN}"
-
-SCRATCH=/tmp/$SLURM_JOB_ID
-genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-qcdata=/dss/dsslegfs01/pr53da/pr53da-dss-0021/shared_resources/trimmed_fastq
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
-
-# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${qcdata}/${RUN}.trim.fastq.gz out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
-bwa mem -M -p -t 10 ${genome} ${subdir}/${RUN}.10gb.fastq.gz | samtools sort -@10 -o ${SCRATCH}/${RUN}.bam -;
-samtools view -F 4 -b ${SCRATCH}/${RUN}.bam > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam; 
-```
-
-Outgroup HiFi data:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=10
-#SBATCH --time=48:00:00
-
-# Align pacbio HiFi data for outgroups
-
-RUN=$1
-
-echo "Aligning sample: ${RUN}"
-
-SCRATCH=/tmp/$SLURM_JOB_ID
-genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
-rawdata=/dss/dsslegfs01/pr53da/pr53da-dss-0021/rawdata/External_Data_SRA_GenomeArk/SRA_Cuculiformes_Outgroups
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
-
-# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${rawdata}/${RUN}_1.fastq.gz out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
-minimap2 -ax map-pb -t 8 ${genome} ${subdir}/${RUN}.10gb.fastq.gz > ${SCRATCH}/${RUN}.sam
-samtools sort ${SCRATCH}/${RUN}.sam | samtools view -F 4 -b > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam; 
-```
-
-And outgroup Illumina:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=10
-#SBATCH --time=48:00:00
-
-# Align other species, illumina data
-
-RUN=$1
-
-echo "Aligning sample: ${RUN}"
-
-SCRATCH=/tmp/$SLURM_JOB_ID
-genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-rawdata=/dss/dsslegfs01/pr53da/pr53da-dss-0021/rawdata/External_Data_SRA_GenomeArk/SRA_Cuculiformes_Outgroups
-outdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
-subdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/subset_10gb
-
-# Subset 10gb, and then align, discarding unaligned reads to save space (-F 4)
-bbduk.sh in=${rawdata}/${RUN}_1.fastq.gz out=${subdir}/${RUN}.10gb.fastq.gz maxbasesout=10000000000
-bwa mem -M -t 10 ${genome} ${subdir}/${RUN}.10gb.fastq.gz | samtools sort -@10 -o ${SCRATCH}/${RUN}.bam -;
-samtools view -F 4 -b ${SCRATCH}/${RUN}.bam > ${outdir}/${RUN}.bam
-samtools index -b ${outdir}/${RUN}.bam;   
-```
-
-Calculate coverage:
-
-```bash
-for RUN in $(ls *bam | sed 's/.bam//g'); do 
-
-cds=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/CDS_Regions_N3_BothParalogs.bed
-
-# Calculate coverage MQ50 
-mosdepth --threads 3 --mapq 50 --by ${cds} --fast-mode --no-per-base ../coverage/${RUN}_cds50 ${RUN}.bam
-
-done 
-
-# After, in /coverage/, merge into single file:
-for i in $(ls *_cds50.regions.bed | sed 's/_cds50.regions.bed//g'); do awk -v i=${i} '{OFS="\t"}{print $1, $2, $3, $4, i}' ${i}_cds50.regions.bed > ${i}.cds50.cov ; done
-cat *.cds50.cov > NDUFAF4_MQ50_Coverage_2024SEPT07.txt
-# I then add e.g. species / tech in excel manually since there are not so many fields 
-```
-
-### Extract Consensus
-
-```bash
-awk '{OFS="\t"}{print $1, $4, $5, $1"_"$4"_"$5, ".", $7}' NDUFAF4_Cuckoo_BothParalogs.gff > WholeGene_Regions.bed
-```
-
-Extract the fasta for that region from all samples:
-
-```bash
-#!/bin/bash
-
-#SBATCH --get-user-env
-#SBATCH --mail-user=merondun@bio.lmu.de
-#SBATCH --clusters=biohpc_gen
-#SBATCH --partition=biohpc_gen_normal
-#SBATCH --cpus-per-task=2
-#SBATCH --time=24:00:00
-
-RUN=$1
-
-# Define paths to your files
-genome=/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR.fa
-regions=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/WholeGene_Regions.bed
-fastadir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/fastas
-bamdir=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/bams
-
-cd $fastadir
-mkdir results scratch scratch/${RUN}
-cd scratch/${RUN}
-
-# Generate consensus sequence in VCF format
-bcftools mpileup -f $genome -Ou -a AD -R $regions ${bamdir}/${RUN}.bam | \
-        bcftools call -m -Ov | \
-        bcftools norm -f $genome -Oz -o ${RUN}.vcf.gz
-bcftools index ${RUN}.vcf.gz
-
-# If coverage is below 1x, or MQ < 50 - exclude!
-MINDP=1
-bcftools view -V indels -e "DP < ${MINDP} || MQ < 50 || F_MISSING > 0.1" -Oz -o ${RUN}.Filtered.vcf.gz ${RUN}.vcf.gz
-bcftools index ${RUN}.Filtered.vcf.gz
-
-# Create FASTA file for chrW with '-' for regions with no coverage
-samtools faidx $genome chr_W:21149910-21177468 | \
-    bcftools consensus ${RUN}.Filtered.vcf.gz --absent - | \
-    awk -v run=${RUN}_W '/^>/{print ">" run; next} {print}' > ${fastadir}/results/${RUN}.W.fa
-
-# and for chr3
-samtools faidx $genome chr_3:25511697-25515677 | \
-    bcftools consensus ${RUN}.Filtered.vcf.gz --absent - | \
-    awk -v run=${RUN}_3 '/^>/{print ">" run; next} {print}' > ${fastadir}/results/${RUN}.3.fa
-```
-
-Ensuring that we only trim and create a tree for the species which have coverage for chrW / chr3: 
-
-```bash
-# Align freely
-mafft --thread 10 --auto Paralogs_G75.fa > NDUFAF4_freealign.fa
-
-# Trim
-trimal -automated1 -in NDUFAF4_freealign.fa -out NDUFAF4_freealign_trimalAuto.fa
-
-# Tree
-iqtree --redo -keep-ident -T 20 -s NDUFAF4_freealign_trimalAuto.fa --seqtype DNA -m "MFP" -B 1000
-
-# And then identify gaps 
-seqkit stats -a *
-
-# Identify the samples with < 70% gaps, and create a tree:
-for i in $(cat Keep.list); do cat ${i} >> NDUFAF4_freealign_trimalAuto.fa; done
-
-# Tree
-iqtree --redo -keep-ident -T 20 -s NDUFAF4_freealign_trimalAuto.fa --seqtype DNA -m "GTR" -B 1000
-```
-
-Plot Coverage and Tree:
-
-```R
-#### Plot NDUFAF4 Coverage 
-setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/coverage/')
-.libPaths('~/mambaforge/envs/R/lib/R/library')
+#### Identify candidates from female-only FST scan 
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males')
+.libPaths('~/r_libs/')
 library(tidyverse)
 library(viridis)
+library(ggpubr)
+library(meRo)
+library(RColorBrewer)
+library(zoo)
+library(ggpubr)
+library(scales)
+library(data.table)
 
-# Load in coverage data 
-c <- read_tsv('NDUFAF4_MQ50_CoverageRegions_2024SEPT07.txt')
-c$Species <- factor(c$Species,levels=c('Cuculus_canorus','Cuculus_micropterus','Cuculus_poliocephalus','Clamator_glandarius','Coccyzus_lansbergi','Piaya_cayana','Dromococcyx_pavoninus','Geococcyx_californianus'))
-c <- c %>% arrange(Species,Coverage)
-c$ID <- factor(c$ID,levels=unique(c$ID))
+md = read_tsv('~/merondun/cuculus_host/Metadata_Host.txt')
+eggcols = md %>% ungroup %>% select(Egg) %>% unique %>% mutate(ord = as.numeric(gsub('E','',Egg))) %>% arrange(ord) %>% 
+  drop_na(Egg) %>% mutate(col = viridis(12,option='turbo')[1:11])
+eggcols = rbind(eggcols,data.frame(Egg='E6W3',ord=5,col='white')) %>% arrange(ord)
 
+##### Load and prep FST BP data  ######
+tidy_bp = fread('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/FST_Contrasts_2024APR4.txt.gz')
+names(tidy_bp) = c('chr','start','p1','p2','FST','intgene','effect','gene')
 
-c %>% 
-  group_by(Species,Sex,chr,Object,start,end) %>% 
-  summarize(Coverage = mean(Coverage)) %>% 
-  filter(Species == 'Cuculus_canorus' & Sex == 'Female') %>% 
-  ggplot(aes(y=Object,x=Coverage,col=chr))+
-  geom_point()+
-  theme_bw()
+#Assign AvZ
+tidy_bp = tidy_bp %>% 
+  mutate(
+    chr = gsub('chr_','',chr),
+    AvZ = case_when(
+      chr == 'W' ~ 'W',
+      chr == 'Z' ~ 'Z',
+      chr == 'MT' ~ 'MT',
+      TRUE ~ 'Autosome'),
+    #add floor and ceiling to FST between 0 - 1
+    FST = pmax(0, pmin(1, FST)),
+    site = paste0(chr,'_',start)
+  ) 
 
-cp <- c %>% 
-  filter(Object == 'Gene') %>% 
-  group_by(Species,Sex,chr) %>% 
-  summarize(Coverage = mean(Coverage)) %>% 
-  ggplot(aes(y=Species,x=Coverage,fill=chr,shape=chr))+
-  geom_point(size=2,position=position_jitter(height=0.15))+
-  facet_grid(.~Sex,scales='free')+
-  scale_shape_manual(values=c(21,24))+
-  theme_bw(base_size=6)+
-  theme(legend.position='top')
-cp
+phylo = read_tsv('Contrast_Metadata.txt') %>% select(p1,p2,Group,Phylo)
+tidy_dat = left_join(tidy_bp,phylo) %>% mutate(gene = toupper(gene),
+                                               intgene = toupper(intgene)) 
 
-pdf('../../../../../figures/20240907_NDUFAF4_Coverage.pdf',height=2.75,width=2.25)
-cp
-dev.off()
-
-# All objects
-allcds <- c %>% 
-  group_by(Species,Object,Sex,chr) %>% 
-  summarize(Coverage = mean(Coverage)) %>% 
-  ggplot(aes(y=Species,x=Coverage,fill=chr))+
-  geom_point(size=3,pch=21,position=position_jitter(height=0.15))+
-  facet_grid(Object~Sex,scales='free')+
-  theme_bw()
-allcds
-
-pdf('../../../../../figures/NDUFAF4_Coverage-IncludingCDS.pdf',height=6,width=6)
-allcds
-dev.off()
-
-# Plot Tree afterwards
-library(ggtree)
-library(treeio)
-
-# Free alignment
-iqtree = read.iqtree('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/10gb/fastas/results/filtered_outs/NDUFAF4_freealign_trimalAuto.fa.contree')
-
-iqtr = root(as.phylo(iqtree),'Clamator_glandarius_SRR26807982_3')
-
-md <- read_tsv('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/cuculiformes_NDUFAF4_blasting/Alignment_Based_Approach/Whole_Genome_Alignment/bams/Metadata.txt')
-g <- ggtree(iqtr,layout='rectangular')
-#g <- ggtree(iqtr,layout='ape')
-g$data <- g$data %>% mutate(Chromosome = ifelse(grepl('W$',label),'chrW','chr3'),
-                            label = gsub('_W$','',label),
-                            label = gsub('_3$','',label))
-g$data <- left_join(g$data,md %>% dplyr::rename(label = ID))
-
-#plot with outgroups 
-gtree <- g +
-  geom_tippoint(aes(col=Chromosome,shape=Species),size=1,stroke=1)+
-  geom_nodelab(aes(label=label),geom = 'text',size=2,hjust = -3)+ 
-  scale_shape_manual(values=c(2,3,1,4,8))+
-  xlim(c(0,1))+
-  #geom_tiplab(aes(label=Species),size=2,offset = 0.05)+
-  geom_tiplab(size=2,offset = 0.02)+
-  theme(legend.position='top')
-gtree
-
-pdf('../../../../../figures/20240907_NDUFAF4-ParalogTree.pdf',height=2.75,width=2.5)
-gtree
-dev.off()
+# within dufaf 4
+ndu <- tidy_dat %>% filter(gene == 'NDUFAF4' | gene == 'LOC128850245') %>% filter(grepl('Ancient_Blue|Contemporary_Reversion',Phylo))
+ndu_snps <- ndu %>%
+  mutate(Phylo = ifelse(Phylo == 'Ancient_Blue', 'Blue Emergence', 'Blue Reversion')) %>%
+  ggplot(aes(y = site, x = FST, fill = Phylo)) +
+  geom_point(size = 2.5,pch=21,col='black',position = position_jitter(width = 0.05, height = 0.1, seed = 42)) +
+  facet_grid(chr ~ effect, scales = 'free', space = 'free') +
+  scale_fill_manual(values = brewer.pal(3, 'Set2')[c(3, 1)]) +
+  theme_bw(base_size = 10) +
+  theme(panel.spacing = unit(0.5, "lines"), clip = "on")
+ndu_snps
+ggsave('~/symlinks/host/figures/20250805_NDUFAF4_chr3-chrW-SNPs_FST.pdf',ndu_snps,height=4,width=7)
 
 ```
-
-### Plot Exons
-
-```bash
-#### Plot NDUFAF4 genes  
-setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/')
-.libPaths('~/mambaforge/envs/gene_viz/lib/R/library')
-library(tidyverse)
-library(gggenes)
-library(rtracklayer)
-
-# import GFF
-gff <- import.gff("/dss/dsslegfs01/pr53da/pr53da-dss-0021/assemblies/Cuculus.canorus/VGP.bCucCan1.pri/GCA_017976375.1_bCucCan1.pri_genomic.CHR-chr_MT.gff")
-
-# filter to features of interest
-genes_of_interest <- c("LOC128850245", "NDUFAF4")
-gff_df <- as_tibble(gff) %>%
-  filter(type == "exon" & gene %in% genes_of_interest) %>%
-  mutate(gene = gene,
-         strand = as.character(strand),
-         start = start,
-         end = end,
-         length = end - start + 1)
-
-# plot
-ggplot(gff_df, aes(xmin = start, xmax = end, y = gene, fill = gene, forward = strand == "+")) +
-  geom_gene_arrow(arrowhead_height = unit(3, "mm"), arrowhead_width = unit(1, "mm")) +
-  theme_classic() +
-  labs(x = "Genomic position", y = "") +
-  facet_wrap(gene~.,scales='free')+
-  theme(legend.position = "none")
-
-
-# Relative
-gff_df_rel <- gff_df %>%
-  group_by(gene) %>%
-  mutate(rel_start = start - min(start),
-         rel_end = end - min(start)) %>%
-  ungroup()
-
-# build plot with local coords
-gene_plot <- ggplot(gff_df_rel, aes(xmin = rel_start, xmax = rel_end, y = gene, fill = gene, forward = strand == "+")) +
-  geom_gene_arrow(arrowhead_height = unit(3, "mm"), arrowhead_width = unit(1, "mm")) +
-  facet_wrap(~gene, scales = "free", nrow=2) +
-  theme_classic() +
-  labs(x = "Genomic position (relative)", y = "") +
-  theme(legend.position = "none") +
-  # add scale bar (e.g., 1kb = 1000 bp) per gene
-  geom_segment(data = distinct(gff_df_rel, gene),
-               aes(x = 0, xend = 1000, y = -0.5, yend = -0.5), inherit.aes = FALSE) +
-  geom_text(data = distinct(gff_df_rel, gene),
-            aes(x = 500, y = -1.5, label = "1 kb"), vjust=-5,size = 3, inherit.aes = FALSE)
-
-gene_plot
-ggsave('~/symlinks/host/figures/20250425_GeneModelNDUFAF4.pdf',gene_plot,
-       height=4,width=5)
-
-```
-
-
-
-
-
-| Gene ID      | Chromosome | Feature | Start    | End      | Length | Strand | GFF Descriptor                                               |
-| ------------ | ---------- | ------- | -------- | -------- | ------ | ------ | ------------------------------------------------------------ |
-| NDUFAF4      | chr_3      | gene    | 25511697 | 25515677 | 3980   | -      | NADH:ubiquinone                                              |
-| NDUFAF4      | chr_3      | mRNA    | 25511697 | 25515677 | 3980   | -      | NADH:ubiquinone oxidoreductase complex assembly factor 4     |
-| NDUFAF4      | chr_3      | exon    | 25515508 | 25515677 | 169    | -      |                                                              |
-| NDUFAF4      | chr_3      | exon    | 25514540 | 25514637 | 97     | -      |                                                              |
-| NDUFAF4      | chr_3      | exon    | 25511697 | 25512391 | 694    | -      |                                                              |
-| NDUFAF4      | chr_3      | CDS     | 25515508 | 25515634 | 126    | -      |                                                              |
-| NDUFAF4      | chr_3      | CDS     | 25514540 | 25514637 | 97     | -      |                                                              |
-| NDUFAF4      | chr_3      | CDS     | 25512095 | 25512391 | 296    | -      |                                                              |
-| LOC128850245 | chr_W      | gene    | 21149910 | 21177468 | 27558  | +      | NADH                                                         |
-| LOC128850245 | chr_W      | mRNA    | 21149910 | 21177468 | 27558  | +      | NADH dehydrogenase [ubiquinone] 1 alpha subcomplex assembly factor 4-like |
-| LOC128850245 | chr_W      | exon    | 21149910 | 21149957 | 47     | +      |                                                              |
-| LOC128850245 | chr_W      | exon    | 21150813 | 21150909 | 96     | +      |                                                              |
-| LOC128850245 | chr_W      | exon    | 21177056 | 21177468 | 412    | +      |                                                              |
-| LOC128850245 | chr_W      | CDS     | 21149910 | 21149957 | 47     | +      |                                                              |
-| LOC128850245 | chr_W      | CDS     | 21150813 | 21150909 | 96     | +      |                                                              |
-| LOC128850245 | chr_W      | CDS     | 21177056 | 21177468 | 412    | +      |                                                              |
-
 
 

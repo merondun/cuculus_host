@@ -1,8 +1,6 @@
-# Relatedness among C. canorus
+## Relative Analyses
 
-Relatedness was assessed with the KING coefficient among C. canorus individuals from all autosomal chromosomes. We then investigated egg phenotype matching among relatives. 
-
-## Remove and Analyze Relatives
+Relatedness was assessed with the KING coefficient among C. canorus individuals from all autosomal chromosomes. We then investigated egg phenotype matching among relatives.
 
 Calculate relatedness on the full set 
 
@@ -114,14 +112,14 @@ if __name__ == '__main__':
 
 ```
 
-### Plot relatedness pies
+### Plot Shared Relative Phenotypes [Fig. 2D]
 
 Identify relatives, shared phenotypes among them:
 
 ```bash
 #### Determine relatedness  
 setwd('~/EvoBioWolf/CUCKOO_gentes/relatedness/')
-.libPaths('~/mambaforge/envs/r/lib/R/library')
+.libPaths('~/r_libs')
 library(tidyverse)
 library(viridis)
 library(scales)
@@ -140,6 +138,7 @@ fam = rel %>% mutate(Relationship = ifelse(PHI > 0.354, 'First Degree',
                                                                 ifelse(PHI <= 0.0442,'Unrelated','Unassigned'))))))
 
 fam %>% filter(PHI > 0.354) #usually > 0.354 is MZ twin / duplicate, but since our highest value is 0.393 and most around 0.37, seems more likely they are just first degree
+length(unique(c(fam$ID_A,fam$ID_B)))
 
 # Add mtDNA differences, calculated externally which identifies pairwise SNPs between samples for mtDNA
 mt = read.table('chrMT_Pairwise_Differences.txt')
@@ -158,9 +157,10 @@ famrm = fam2 %>%
   separate(pair,into=c('ID_A','ID_B'),remove=F,sep=',') %>% ungroup() %>% select(-pair)
 
 # Merge with metadata
-md = read_tsv('Full_Metadata.txt')v
 md <- read_tsv('../Metadata_Host.txt')
 md = md %>% select(c(ID,Egg,GeographicGroup,Sampling_Year,Haplogroup,Sex,Age))
+# This individual we should exclude from nestling, there's some uncertainty about age (captive cuckoo?)
+md <- md %>% mutate(Age = ifelse(grepl('252',ID),'Adult',Age))
 mda = md
 
 # Add an '_A' and '_B' to each metadata field 
@@ -182,15 +182,16 @@ famd = famd %>% filter(Age_A == 'Young' & Age_B == 'Young') # Only compare withi
 famd %>% count(Age_A,Age_B)
 famd = famd %>% filter(abs(Sampling_Year_A - Sampling_Year_B) <= 2) # Only compare within the same sampling year (e.g. SIBLINGS)
 famd %>% count(Age_A,Age_B) #n = 2806
+length(unique(c(famd$ID_A,famd$ID_B)))
 
 # Within first degree relatives, what's the distribution of the # of mtDNA snps? 
 mtdna_mutations <- famd %>% filter(Relationship == 'First Degree') %>% 
   ggplot(aes(x=SNPs))+geom_histogram(show.legend = F)+theme_bw()+
   scale_x_continuous(breaks=pretty_breaks(n=14))
 
-png('20250207_mtDNAMutations.png',units='in',res=300,height=3,width=5)
-mtdna_mutations
-dev.off()
+# png('20250207_mtDNAMutations.png',units='in',res=300,height=3,width=5)
+# mtdna_mutations
+# dev.off()
 
 # Unhash this for making the plots with difference mtDNA difference thresholds
 #for (snp_count in seq(0,3,1)){
@@ -208,7 +209,7 @@ famd %>% filter(Relationship == 'First Degree') %>%  count(Line)
 famd %>% filter(Relationship != 'Unrelated') %>% count(Line)
 # Line         n
 #   1 Maternal   112
-# 2 Paternal   163
+# 2 Paternal   164
 
 #simply assign unrelated as paternal, move pie chart in final plot 
 famd = famd %>% mutate(Line = ifelse(Relationship == 'Unrelated','Paternal',Line))
@@ -217,7 +218,7 @@ famd = famd %>% mutate(Line = ifelse(Relationship == 'Unrelated','Paternal',Line
 #famd = famd %>% filter(Relationship != 'First Degree')
 
 famd %>% filter(Relationship != 'Unrelated') %>% count(Relationship,Line)
-famd %>% filter(Relationship != 'Unrelated') %>% nrow
+famd %>% filter(Relationship != 'Unrelated') %>% nrow # total relationships
 # Relationship  Line         n
 #   1 First Degree  Maternal    56
 # 2 First Degree  Paternal    59
@@ -225,6 +226,10 @@ famd %>% filter(Relationship != 'Unrelated') %>% nrow
 # 4 Second Degree Paternal    38
 # 5 Third Degree  Maternal    27
 # 6 Third Degree  Paternal    66
+
+#total individuals in relative dataset 
+rels <- famd %>% filter(Relationship != 'Unrelated') 
+length(unique(c(rels$ID_A,rels$ID_B)))
 
 nrow(famd)
 #[1] 2806 with first degree, or [1] 2948 with no age and year restrictions
@@ -438,4 +443,5 @@ length(unique(c(relatives$ID_A,relatives$ID_B))) - length(unique(rms$Remove))
 write.table(unique(c(keep$ID_A,keep$ID_B)),'Unrelated_2023OCT27.list',quote=F,row.names=F,sep='/t',col.names=F)
 samps = read_tsv('Unrelated_2023OCT27.list',col_names = F)
 ```
+
 

@@ -12,15 +12,15 @@ The repository is organized as follows:
 
 - **wgs_preprocessing**: Preparing fastq reads, alignment, initial SNP filtering, identifying relatives. 
 
-- **phylogenetics**: Calling SNPs from alignments, subsampling individuals. 
+- **phylogenetics**: Matrilineal trees, TWISST, BEAST, de novo mtDNA genomes (Fig 1 & 2). 
 
-- **population_genetics**: Run ADMIXTURE and evalAdmix, plot tesselation and PCA. 
+- **population_genetics**: ADMIXTURE and evalAdmix, plot tesselation and PCA (Fig 1). 
 
-- **gens_associations**: Associations between egg or host or habitat and explanatory variables: haplogroup, ancestry, geography. 
+- **correlations_geography_genetics**: Associations between FST/PHIst and geographic distance (Fig. 1). 
 
-- **correlations_geography_genetics**: Associations between FST/PHIst and geographic distance. 
+- **gens_associations**: Associations between egg and explanatory variables: haplogroup, ancestry, geography (Fig. 2). 
 
-- **gene_hunt**: Examining the genetic basis of egg mimicry using pairwise FST analyses.
+- **gene_hunt**: Examining the genetic basis of egg mimicry using pairwise FST analyses (Fig. 3 & 4).
 
 ## Contact
 
