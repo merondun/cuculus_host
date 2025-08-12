@@ -2060,6 +2060,262 @@ ggsave('~/symlinks/host/figures/20250805_denovo_tree_withGen.pdf',bp,height=8,wi
 
 ```
 
+### Replicate Gene Hunt mtDNA
+
+```bash
+#!/bin/bash
+
+#SBATCH --get-user-env
+#SBATCH --mail-user=merondun@bio.lmu.de
+#SBATCH --clusters=biohpc_gen
+#SBATCH --partition=biohpc_gen_normal
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=4763mb
+#SBATCH --time=2-00:00:00
+
+# mamba activate phylos
+mkdir -p tmp codon_filtered
+
+for GENE in $(grep '^>' CDS.fa | sed 's/>//'); do
+  echo "Processing $GENE..."
+  seqtk subseq CDS.fa <(echo $GENE) > tmp/${GENE}.cds.fa
+
+    for SAMPLE in $(cat AllEggs.list); do
+
+        echo "Processing $SAMPLE..."
+            if [ ! -f fastas/${SAMPLE}.fasta.nsq ]; then
+                    makeblastdb -in fastas/${SAMPLE}.fasta -dbtype nucl
+            fi
+        blastn -query tmp/${GENE}.cds.fa -db fastas/${SAMPLE}.fasta -outfmt 6 -max_target_seqs 1 -evalue 1e-5 > tmp/${SAMPLE}_${GENE}.blast
+
+        f=tmp/${SAMPLE}_${GENE}.blast
+        read chrom start end <<< $(awk '{s=($9<$10)?$9:$10; e=($9>$10)?$9:$10; print $2, s, e}' "$f" | head -n1)
+        strand=$(awk '{print ($9<=$10) ? "+" : "-"}' "$f" | head -n1)
+
+        echo "Extracting $GENE from $chrom:$start-$end on strand $strand..."
+
+        if [ "$strand" == "+" ]; then
+        seqkit subseq -r ${start}:${end} fastas/${SAMPLE}.fasta > tmp/${SAMPLE}_${GENE}.fa
+        else
+        seqkit subseq -r ${start}:${end} -r - fastas/${SAMPLE}.fasta | seqkit seq -rp > tmp/${SAMPLE}_${GENE}.fa
+        fi
+
+        # Grab the longest ORF
+        TransDecoder.LongOrfs -t tmp/${SAMPLE}_${GENE}.fa -m 10 --genetic_code Mitochondrial-Vertebrates --output_dir tmp
+        TransDecoder.Predict -t tmp/${SAMPLE}_${GENE}.fa --genetic_code Mitochondrial-Vertebrates --no_refine_starts --single_best_only --output_dir tmp
+        sed -i "1s/.*/>${SAMPLE}/g" tmp/${SAMPLE}_${GENE}.fa.transdecoder.cds
+        sed -i "1s/.*/>${SAMPLE}/g" tmp/${SAMPLE}_${GENE}.fa.transdecoder.pep
+
+    done
+
+done 
+```
+
+Align each gene:
+
+```bash
+#!/bin/bash
+
+#SBATCH --get-user-env
+#SBATCH --mail-user=merondun@bio.lmu.de
+#SBATCH --clusters=biohpc_gen
+#SBATCH --partition=biohpc_gen_normal
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=4763mb
+#SBATCH --time=2-00:00:00
+
+# mamba activate phylos
+mkdir -p tmp fst 
+
+for GENE in $(grep '^>' CDS.fa | sed 's/>//'); do
+  echo "Processing $GENE..."
+
+  cat tmp/*_${GENE}.fa.transdecoder.cds > tmp/${GENE}.fa
+  macse -prog alignSequences -seq tmp/${GENE}.fa -out_NT tmp/${GENE}.NT.fa -out_AA tmp/${GENE}.AA.fa -gc_def 2
+  snp-sites -v -o tmp/${GENE}.vcf tmp/${GENE}.NT.fa
+  
+	for GROUP in Blue__NonBlue Blue__Reversion; do 
+    p1=$(echo ${GROUP} | sed 's/__.*//g')
+	p2=$(echo ${GROUP} | sed 's/.*__//g')
+
+      ~/modules/vcftools/bin/vcftools --haploid --vcf tmp/${GENE}.vcf --fst-window-size 1 --weir-fst-pop fst/${p1}.list --weir-fst-pop fst/${p2}.list --out tmp/${GROUP}_${GENE}
+       awk -v g=${GROUP} -v e=${GENE} '{OFS="\t"}{print $1,$2,$5,g,e}' tmp/${GROUP}_${GENE}.windowed.weir.fst > tmp/${GROUP}_${GENE}.fst
+	done 
+
+	first_id=$(seqkit head -n 1 tmp/${GENE}.NT.fa | sed -n 's/^>//p')
+	seqkit grep -p "${first_id}" tmp/${GENE}.NT.fa | sed 's/>.*/>1/g' > tmp/${GENE}.ref.fa
+  
+    length=$(seqkit fx2tab -l -n tmp/${GENE}.NT.fa | head -n 1 | cut -f2)
+    gff_file=tmp/${GENE}.gff3
+
+    echo "Creating GFF for $fasta_file (length: $seq_length bp) -> $gff_file"
+	echo -e "##gff-version 3" > "$gff_file"
+    echo -e "##sequence-region 1 1 $length" >> "$gff_file"
+    echo -e "1\t.\tgene\t1\t$length\t.\t+\t.\tID=$GENE;Name=$GENE" >> "$gff_file"
+    echo -e "1\t.\tmRNA\t1\t$length\t.\t+\t.\tID=$GENE.t1;Parent=$GENE;Name=$GENE" >> "$gff_file"
+    echo -e "1\t.\tCDS\t1\t$length\t.\t+\t0\tID=$GENE.cds1;Parent=$GENE.t1;Name=$GENE" >> "$gff_file"
+
+	Rscript annotate.R ${GENE} 
+done
+mergem tmp/*fst > fst/FST.txt 
+cat tmp/*ann.txt > fst/Annotated.txt
+```
+
+Plot:
+
+```R
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/phylogenetics/202507_denovo/egg_hunt_5x')
+.libPaths('~/r_libs/')
+library(tidyverse)
+library(viridis)
+library(RColorBrewer)
+library(Biostrings)
+library(ggpubr)
+
+fst <- read_tsv('fst/FST.txt')
+names(fst) <- c('d1','pos','FST','Group','Gene')
+ann <- read_tsv('fst/Annotated.txt')
+names(ann) <- c('d1','pos','REF','ALT','Gene','effect')
+nonsyn <- ann %>% filter(effect == 'nonsynonymous')
+both <- left_join(fst %>% 
+            dplyr::select(-d1) %>% 
+            mutate(pos = as.numeric(pos)), 
+          ann %>% 
+            dplyr::select(-d1) %>% 
+            mutate(pos = as.numeric(pos)))
+fixed <- both %>% 
+  filter(FST == 1 & effect != 'synonymous') 
+
+### Plot Full alignments
+meta <- read_tsv("fst/Pops.txt", col_names = FALSE, show_col_types = FALSE) %>%
+  setNames(c("sample","group")) %>%
+  mutate(group = factor(group, levels = c("Blue","Reversion","NonBlue")))
+
+counter <- 0
+compl <- list()
+nonsyn <- fixed %>% filter(Gene != 'nad3_a')
+for (gene in unique(nonsyn$Gene)) { 
+  counter = counter+1
+  cat('Working on :',gene,'\n')
+
+fa <- readDNAStringSet(paste0("tmp/",gene,".NT.fa"))
+ids <- names(fa)
+
+# full matrix in meta order
+mat <- fa %>%
+  as.matrix() %>%
+  `rownames<-`(ids) %>%
+  .[meta$sample, , drop = FALSE]
+
+consensus_ignore <- c("-", "N", "n", "?", ".")
+is_var <- apply(mat, 2, function(col) {
+  u <- unique(col[!col %in% consensus_ignore])
+  length(u) > 1
+})
+
+var_cols <- which(is_var)  # these are the original positions in mat
+mat_var <- mat[, var_cols, drop = FALSE]
+
+# long df for ALL sites
+df <- as_tibble(mat_var, rownames = "sample") %>%
+  pivot_longer(-sample, names_to = "col_index", values_to = "base") %>%
+  mutate(
+    var_index = as.integer(str_remove(col_index, "^V")),
+    pos = var_cols[var_index],
+    base = toupper(base),
+    base = if_else(base %in% c("A","C","G","T","-","N"), base, "N")
+  ) %>%
+  left_join(meta, by = "sample")
+
+# percent
+comp_df <- df %>%
+  group_by(group, base) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(group) %>%
+  mutate(percent = 100 * n / sum(n)) %>%
+  arrange(group, desc(percent)) %>% 
+  mutate(Gene = gene)
+
+# For outlining dN 
+pad=1
+non <- nonsyn %>%
+  filter(Gene == gene) %>% 
+  mutate(pos = as.numeric(pos)) %>% 
+  left_join(.,df %>% dplyr::select(var_index,pos) %>% distinct) %>% 
+  mutate(lab = ifelse(grepl('Reversion',Group),'Reversion','Blue Emergence'),group='Blue') 
+
+lab <- non %>% 
+  group_by(Gene,lab) %>% summarise(p = str_c(pos, collapse = ","), .groups = "drop") %>% 
+  mutate(label = paste0(lab,': ',p)) %>% ungroup %>% group_by(Gene) %>% 
+  summarise(p = str_c(label, collapse = "\n"), .groups = "drop") %>% 
+  mutate(label = paste0(Gene,'\n',p))
+
+df$group <- factor(df$group,levels=c('Blue','Reversion','NonBlue'))
+non$group <- factor(non$group,levels=c('Blue','Reversion','NonBlue'))
+base_levels <- c("A","C","G","T","-","N")
+
+p <- ggplot(df, aes(x = var_index, y = sample)) +
+  geom_tile(aes(fill = factor(base, levels = base_levels)), width = 1, height = 0.9) +
+  #geom_rect(data = non,
+  #          aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, col=Group),
+  #          inherit.aes = FALSE, linewidth = 0.5) +
+  facet_grid(group ~ ., scales = "free_y", space = "free_y", switch = "y") +
+  scale_x_continuous(expand = expansion(mult = c(0.001, 0.001))) +
+  scale_y_discrete(expand = expansion(mult = c(0.001, 0.001))) +
+  ggtitle(lab$label)+
+  geom_text(
+    data = non,
+    aes(x = var_index, y = 8, color = Group, label = '*'),
+    inherit.aes = FALSE,
+    size = 5
+  ) +
+  scale_color_manual(values=c('#8da0cb','#46b090'))+
+  scale_fill_manual(
+    values = c(
+      "A" = "#009E73",
+      "C" = "#0072B2",
+      "G" = "#E69F00",
+      "T" = "#D55E00",
+      "-" = "#999999",
+      "N" = "#E5E5E5"
+    ),
+    breaks = base_levels,
+    guide = guide_legend(title = "Base")
+  ) +
+  labs(x = NULL, y = NULL) +
+  theme_minimal(base_size = 9) +
+  theme(
+    strip.placement = "outside",
+    strip.text.y.left = element_text(angle = 0, hjust = 0),
+    panel.grid = element_blank(),
+    plot.title = element_text(size = 6),
+    axis.text.y = element_blank())
+p
+assign(paste0('p',counter),p)
+compl[[gene]] <- comp_df
+}
+
+comps <- as_tibble(rbindlist(compl)) %>% 
+  ggplot(aes(y=percent,x=group,fill=base))+
+  geom_bar(stat='identity')+
+  scale_fill_manual(
+    values = c(
+      "A" = "#009E73",
+      "C" = "#0072B2",
+      "G" = "#E69F00",
+      "T" = "#D55E00")) +
+  facet_grid(.~Gene,scales='free')+
+  theme_bw()+
+  theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1))+xlab('')+ylab('Base Composition (%)')
+ap <- ggarrange(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,nrow=4,ncol=3,common.legend = TRUE)
+ap
+ggsave('~/symlinks/host/figures/20250811_denovo_mtDNA_Alignments.pdf',
+       ap,height=9,width=7)
+ggsave('~/symlinks/host/figures/20250811_denovo_mtDNA_Composition.pdf',
+       comps,height=3,width=7)
+
+```
+
 
 
 ## BEAST+Rooting: Using 929-Kb
@@ -2229,15 +2485,15 @@ Run:
 
 RUN=$1
 beast -threads 10 -overwrite -beagle_SSE -seed 777 -java ${RUN}.xml
-
+~/modules/beast/bin/treeannotator -b 10 -height mean -file ${RUN}.trees ${RUN}.ann
 ```
 
 Plot:
 
 ```bash
 #### Plot BEAST annotated trees 
-setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/phylogenetics/202503_beast/m1.4_s.15/final_trees/')
-.libPaths('~/mambaforge/envs/r/lib/R/library')
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/phylogenetics/202508_Genes10k-75k/beast')
+.libPaths('~/r_libs/')
 library(ggtree)
 library(phytools)
 library(ape)
@@ -2274,7 +2530,8 @@ for (file in files){
     geom_nodelab(aes(label=lab),size=1.5,vjust=1) +
     ggtitle(lab)+
     #geom_tiplab(size=2)+
-    #geom_nodelab(aes(x=branch, label=round(posterior, 2)), vjust=-.5, size=3) +
+    #geom_nodelab(aes(label = scales::percent(posterior, accuracy = 0.1)),size = 4, vjust = -0.2) +
+    geom_nodepoint(mapping=aes(subset=(as.numeric(posterior) == 1)),col='black',fill='grey90',pch=23,size=1.5,show.legend=F)+
     scale_color_continuous(low="darkgreen", high="red") +
     scale_fill_manual(values=leg$HaplogroupColor,breaks=leg$Haplogroup)+
     scale_shape_manual(values=leg$Shape,breaks=leg$SpeciesShort)+
@@ -2284,21 +2541,16 @@ for (file in files){
     theme(legend.position='right')
   ggp
   assign(paste0('p',counter),ggp)
+
 } 
 
-ggarrange(p1,p2,p3,p4,common.legend = TRUE)
+ggarrange(p1,p2,p3,p4,p5,p6,common.legend = TRUE)
 
-pdf('~/symlinks/host/figures/20250501_BEAST_Divergence_Dating_All-Dual.pdf',height=9,width=7)
-ggarrange(p1,p2,p3,p4,common.legend = TRUE)
+pdf('~/symlinks/host/figures/20250803_BEAST_Divergence_Dating_All-PlumageGenes',height=9,width=7)
+ggarrange(p1,p2,p3,p4,p5,p6,common.legend = TRUE)
 dev.off()
 
 ```
-
-
-
-
-
-
 
 # Analyses: Population Genetic Differentiation
 
@@ -7736,7 +7988,7 @@ See if any canorus egg types show autosomal differentiation around the BLVRA loc
 ```bash
 #mamba activate merothon 
 WD=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/ndufaf4
-CD ${WD}
+cd ${WD}
 mkdir -p ndufaf4/work ndufaf4/out
 
 grep 'NDUFAF4' Gene_Lookup.bed | \
@@ -7754,6 +8006,25 @@ vcftools --gzvcf ndufaf4/ndufaf4.vcf.gz --out ndufaf4/work/${TARGET} \
 done
 ```
 
+W copy:
+
+````bash
+#mamba activate merothon 
+WD=/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/manyhost_hunt/males/ndufaf4
+cd ${WD}
+mkdir -p ndufaf4/work ndufaf4/out
+
+grep 'LOC128850245' Gene_Lookup.bed | awk '{OFS="\t"}{print $1, $2-500000, $3+500000,$4, $5}' > ndufaf4/w_copy.bed
+bedtools intersect -header -a vcfs/chr_W.SNP.DP3.vcf.gz -b ndufaf4/w_copy.bed | bcftools view -Oz -o ndufaf4/w_copy.vcf.gz
+
+for TARGET in ECC1 ECC3 ECC6 ECC7 ECC8 ECC10; do
+
+~/modules/vcftools/bin/vcftools --haploid --gzvcf ndufaf4/w_copy.vcf.gz --out ndufaf4/work/${TARGET}_w \
+            --weir-fst-pop ndufaf4/work/${TARGET}.T.list --weir-fst-pop ndufaf4/work/${TARGET}.F.list --fst-window-size 1 --max-missing 0.1
+        awk -v e=${TARGET} '{OFS="\t"}{print $1, $2, $3, $5, e}' ndufaf4/work/${TARGET}_w.windowed.weir.fst | sed '1d' > ndufaf4/out/${TARGET}_W.out
+done
+````
+
 in R:
 
 ```bash
@@ -7767,24 +8038,30 @@ library(devtools)
 
 md = read_tsv('~/EvoBioWolf/CUCKOO_gentes/Metadata_Host.txt')
 leg <- md %>% select(Egg,EggCol) %>% distinct
-n <- read_tsv('NDUFAF4.txt',col_names = F)
+n <- read_tsv('NDUFAF4_With-W.txt',col_names = F)
 names(n) <- c('chr','start','end','fst','Egg')
 ceiling <- n %>% summarize(ymax=max(fst)*.99) %>% pull(ymax)
 n <- n %>%
   mutate(fst = pmax(0,pmin(1,fst)),
-         targ = ifelse(end > 25511697 & end < 25515677, 'NDUFAF4','Background'))
+         targ = ifelse(
+           ((end > 25511697 & end < 25515677) & chr == 'chr_3') |
+             ((end > 21149910 & end < 21177468) & chr == 'chr_W'),
+           'NDUFAF4',
+           'Background'
+         ))
 n$Egg <- factor(n$Egg,levels=c('ECC1','ECC3','ECC6','ECC7','ECC8','ECC10'))
-np <- n %>% group_by(Egg,targ) %>% 
+np <- n %>% group_by(Egg,targ,chr) %>% 
   sum_stats(fst) %>% 
   ggplot(aes(x=Egg,y=mean,ymin=mean-sd,ymax=mean+sd,col=Egg,shape=targ))+
   geom_point(position=position_dodge(width=0.9),size=5)+
   geom_errorbar(position=position_dodge(width=0.9),width=0.5)+
   ylab('Mean +/- SD FST')+
+  facet_wrap(chr~.,scales='free')+
   scale_color_manual(values=leg$EggCol,breaks=leg$Egg)+
   coord_flip()+
   theme_bw()
 np
-ggsave('~/symlinks/host/figures/20250802_FST_Near_NDUFAF4-chr3.pdf', np,height=5,width=5)
+ggsave('~/symlinks/host/figures/20250811_FST_Near_NDUFAF4-chr3-chrW.pdf', np,height=4,width=7)
 
 ```
 
@@ -7827,20 +8104,41 @@ writedat = dat %>%
   arrange(seqnames,start)
 write.table(writedat,file='ndufaf4/ndufaf4.annotated.txt',quote=F,sep='\t',row.names=F)
 
+```
+
+Merge chr3 and chrW, then Plot:
+
+```bash
+setwd('/dss/dsslegfs01/pr53da/pr53da-dss-0021/projects/2021__Cuckoo_Resequencing/vcfs/all_samples-2022_11/host/scan_n4/femalesN4_vs_all')
+.libPaths('~/r_libs')
+library(tidyverse)
+library(data.table)
+library(VariantAnnotation)
+library(GenomicFeatures)
+
+writedat <- read_tsv('20250806_Annotated.txt',col_names = F)
+writedat
+names(writedat) <- c('chr','start','end','CONSEQUENCE','GENEID')
 pnps <- writedat %>% mutate(gene = gsub('gene-','',GENEID)) %>% 
-  group_by(gene) %>% dplyr::count(CONSEQUENCE) %>% 
+  group_by(chr,gene) %>% dplyr::count(CONSEQUENCE) %>% 
   filter(CONSEQUENCE == 'nonsynonymous' | CONSEQUENCE == 'synonymous') %>% 
   pivot_wider(names_from = CONSEQUENCE,values_from = n) %>% 
   mutate(pnps = nonsynonymous/synonymous)
-t <- pnps %>% filter(grepl('NDUFAF4',gene))
+t <- pnps %>% filter(grepl('NDUFAF4|LOC128850245',gene))
 p <- pnps %>% 
-  ggplot(aes(x=pnps))+
+  filter(chr == 'chr_W' | chr == 'chr_3') %>% 
+  ggplot(aes(y=pnps))+
   geom_histogram()+
-  geom_vline(xintercept=t$pnps,lty=2,color='blue')+
+  facet_grid(.~chr,scales='free')+
+  geom_hline(data=t,aes(yintercept=pnps),lty=2,color='blue')+
   xlab('pN/pS')+ylab('Count (Genes on chr3)')+
   theme_bw()
-ggsave('~/symlinks/host/figures/20250805_pNpS_chr3_NDUFAF4.pdf',p,height=2.5,width=4)
+p
+ggsave('~/symlinks/host/figures/20250811_pNpS_chr3-chrW_NDUFAF4.pdf',p,height=2.5,width=4)
+
 ```
+
+
 
 ## bFST: Females Nestlings N=3
 
